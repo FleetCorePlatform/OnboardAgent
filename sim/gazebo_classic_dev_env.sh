@@ -21,7 +21,7 @@ run() {
 		fleetcoreagent/px4-dev-gazebo-classic-focal:latest
 }
 
-if ! command -v nvidia-smi; then
+if ! command -v nvidia-smi &> /dev/null; then
   echo "No Nvidia GPU detected, exiting.."
   exit 1
 fi

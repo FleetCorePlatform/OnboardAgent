@@ -2,19 +2,20 @@
 
 default: run
 
+venv:
+	@if [ ! -d "./.venv" ]; then uv venv; fi
+	uv sync
+
 de:
-ifeq ($(gazebo),1)
-	@uv venv
-	uv sync
-	/bin/bash ./sim/gazebo_dev_env.sh
+ifeq ($(classic),1)
+	$(MAKE) venv
+	/bin/bash ./sim/gazebo_classic_dev_env.sh
 else ifeq ($(pegasus),1)
-	@uv venv
-	uv sync
+	$(MAKE) venv
 	/bin/bash ./sim/pegasus_dev_env.sh
 else
-	@uv venv
-	uv sync
-	/bin/bash ./sim/gazebo_classic_dev_env.sh
+	$(MAKE) venv
+	/bin/bash ./sim/gazebo_dev_env.sh
 endif
 
 format:
