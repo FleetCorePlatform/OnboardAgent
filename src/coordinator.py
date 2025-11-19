@@ -173,6 +173,8 @@ class JobCoordinator:
         except DroneStartMissionException as e:
             raise Exception(f"Mission start failed: {e}")
 
+        # TODO: Move TelemetryCollector, and TelemetryPublisher instantiation to main.py
+
         self.telemetry_collector = TelemetryCollector(
             self.drone.system, interval_hz=self.config.telemetry_sample_interval
         )
