@@ -11,9 +11,11 @@ dependencies = [
     "loguru>=0.7.3",
     "mavsdk>=3.9.0",
     "mypy>=1.17.1",
+    "opencv-python>=4.12.0.88",
     "pydantic>=2.11.7",
     "python-dotenv>=1.1.1",
     "rich>=14.1.0",
+    "ultralytics>=8.3.228",
 ]
 
 [[tool.mypy.overrides]]
@@ -27,6 +29,7 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.uv]
 dev-dependencies = [
+    "pygobject>=3.54.5",
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",
 ]
