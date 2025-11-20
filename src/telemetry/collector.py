@@ -46,12 +46,14 @@ class TelemetryCollector:
 
     async def _sample_telemetry(self) -> TelemetryData:
         """Sample telemetry at fixed rate."""
-        position_raw, battery_raw, health_raw, velocity_raw, heading_raw = await asyncio.gather(
-            self.drone.telemetry.position().__anext__(),
-            self.drone.telemetry.battery().__anext__(),
-            self.drone.telemetry.health().__anext__(),
-            self.drone.telemetry.velocity_ned().__anext__(),
-            self.drone.telemetry.heading().__anext__(),
+        position_raw, battery_raw, health_raw, velocity_raw, heading_raw = (
+            await asyncio.gather(
+                self.drone.telemetry.position().__anext__(),
+                self.drone.telemetry.battery().__anext__(),
+                self.drone.telemetry.health().__anext__(),
+                self.drone.telemetry.velocity_ned().__anext__(),
+                self.drone.telemetry.heading().__anext__(),
+            )
         )
 
         ground_speed: float = sqrt(velocity_raw.east_m_s**2 + velocity_raw.north_m_s**2)

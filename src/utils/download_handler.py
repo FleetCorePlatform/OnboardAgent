@@ -2,7 +2,10 @@ import os
 import urllib.request
 from loguru import logger
 
-from src.exceptions.download_exceptions import DownloadException, DownloadNotAllowedFolderException
+from src.exceptions.download_exceptions import (
+    DownloadException,
+    DownloadNotAllowedFolderException,
+)
 
 
 def download_file(url: str, path: str) -> None:

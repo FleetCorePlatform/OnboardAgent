@@ -5,7 +5,7 @@ import numpy as np
 import time
 from ultralytics import YOLO
 
-gi.require_version('Gst', '1.0')
+gi.require_version("Gst", "1.0")
 from gi.repository import Gst
 
 
@@ -22,34 +22,37 @@ class StreamAnalyzer:
         self._video_sink = None
 
     def run(self):
-        command: str = f"udpsrc port={self.port} ! application/x-rtp, payload=96 ! rtph264depay ! h264parse \
+        command: str = (
+            f"udpsrc port={self.port} ! application/x-rtp, payload=96 ! rtph264depay ! h264parse \
             ! avdec_h264 ! videoconvert ! video/x-raw,format=(string)BGR \
             ! appsink emit-signals=true sync=false max-buffers=2 drop=true"
+        )
 
         self._video_pipe = Gst.parse_launch(command)
         self._video_pipe.set_state(Gst.State.PLAYING)
-        self._video_sink = self._video_pipe.get_by_name('appsink0')
+        self._video_sink = self._video_pipe.get_by_name("appsink0")
 
-        self._video_sink.connect('new-sample', self._decode_callback)
+        self._video_sink.connect("new-sample", self._decode_callback)
 
     def _gst_to_opencv(self, sample) -> np.ndarray:
         buf = sample.get_buffer()
         caps = sample.get_caps()
         array = np.ndarray(
             (
-                caps.get_structure(0).get_value('height'),
-                caps.get_structure(0).get_value('width'),
-                3
+                caps.get_structure(0).get_value("height"),
+                caps.get_structure(0).get_value("width"),
+                3,
             ),
-            buffer=buf.extract_dup(0, buf.get_size()), dtype=np.uint8)
+            buffer=buf.extract_dup(0, buf.get_size()),
+            dtype=np.uint8,
+        )
         return array
 
     def _decode_callback(self, sink):
-        sample = sink.emit('pull-sample')
+        sample = sink.emit("pull-sample")
         self._frame = self._gst_to_opencv(sample)
 
         return Gst.FlowReturn.OK
-
 
     def process_frame(self, frame, model):
         results = model(frame, verbose=False)
@@ -63,14 +66,16 @@ class StreamAnalyzer:
                 xyxy = box.xyxy[0].cpu().numpy()
                 x1, y1, x2, y2 = map(int, xyxy)
 
-                print(f"Detected: {class_name} (class {cls_id}), confidence={conf:.2f}, bbox=[{x1},{y1},{x2},{y2}]")
+                print(
+                    f"Detected: {class_name} (class {cls_id}), confidence={conf:.2f}, bbox=[{x1},{y1},{x2},{y2}]"
+                )
 
         return results
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("Loading YOLO model...")
-    model = YOLO('yolov8n.pt')
+    model = YOLO("yolov8n.pt")
     print("Model loaded.")
 
     video = StreamAnalyzer()

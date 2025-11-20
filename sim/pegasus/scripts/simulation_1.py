@@ -20,10 +20,14 @@ from pegasus.simulator.params import ROBOTS, SIMULATION_ENVIRONMENTS
 from pegasus.simulator.logic.state import State
 from pegasus.simulator.logic.graphical_sensors.monocular_camera import MonocularCamera
 from pegasus.simulator.logic.backends.ros2_backend import ROS2Backend
-from pegasus.simulator.logic.backends.px4_mavlink_backend import PX4MavlinkBackend, PX4MavlinkBackendConfig
+from pegasus.simulator.logic.backends.px4_mavlink_backend import (
+    PX4MavlinkBackend,
+    PX4MavlinkBackendConfig,
+)
 from pegasus.simulator.logic.vehicles.multirotor import Multirotor, MultirotorConfig
 from pegasus.simulator.logic.interface.pegasus_interface import PegasusInterface
 from scipy.spatial.transform import Rotation
+
 
 class PegasusApp:
     def __init__(self):
@@ -41,8 +45,8 @@ class PegasusApp:
             attributes={
                 "inputs:intensity": 5e3,
                 "inputs:color": (1.0, 1.0, 1.0),
-                "inputs:texture:file": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/4.5/NVIDIA/Assets/Skies/Cloudy/abandoned_parking_4k.hdr"
-            }
+                "inputs:texture:file": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/4.5/NVIDIA/Assets/Skies/Cloudy/abandoned_parking_4k.hdr",
+            },
         )
 
         self.pg.load_environment(SIMULATION_ENVIRONMENTS["Black Gridroom"])
@@ -50,46 +54,62 @@ class PegasusApp:
         config_multirotor0 = MultirotorConfig()
         config_multirotor1 = MultirotorConfig()
 
-        mavlink_config0 = PX4MavlinkBackendConfig({
-            "vehicle_id": 0,
-            "px4_autolaunch": True,
-            "px4_dir": self.pg.px4_path,
-            "px4_vehicle_model": self.pg.px4_default_airframe
-        })
+        mavlink_config0 = PX4MavlinkBackendConfig(
+            {
+                "vehicle_id": 0,
+                "px4_autolaunch": True,
+                "px4_dir": self.pg.px4_path,
+                "px4_vehicle_model": self.pg.px4_default_airframe,
+            }
+        )
 
-        mavlink_config1 = PX4MavlinkBackendConfig({
-            "vehicle_id": 1,
-            "px4_autolaunch": True,
-            "px4_dir": self.pg.px4_path,
-            "px4_vehicle_model": self.pg.px4_default_airframe
-        })
+        mavlink_config1 = PX4MavlinkBackendConfig(
+            {
+                "vehicle_id": 1,
+                "px4_autolaunch": True,
+                "px4_dir": self.pg.px4_path,
+                "px4_vehicle_model": self.pg.px4_default_airframe,
+            }
+        )
 
         config_multirotor0.backends = [
             PX4MavlinkBackend(mavlink_config0),
-            ROS2Backend(vehicle_id=0,
-                        config={
-                            "namespace": 'drone',
-                            "pub_sensors": False,
-                            "pub_graphical_sensors": True,
-                            "pub_state": True,
-                            "sub_control": False, })]
+            ROS2Backend(
+                vehicle_id=0,
+                config={
+                    "namespace": "drone",
+                    "pub_sensors": False,
+                    "pub_graphical_sensors": True,
+                    "pub_state": True,
+                    "sub_control": False,
+                },
+            ),
+        ]
 
         config_multirotor1.backends = [
             PX4MavlinkBackend(mavlink_config1),
-            ROS2Backend(vehicle_id=1,
-                        config={
-                            "namespace": 'drone',
-                            "pub_sensors": False,
-                            "pub_graphical_sensors": True,
-                            "pub_state": True,
-                            "sub_control": False, })]
+            ROS2Backend(
+                vehicle_id=1,
+                config={
+                    "namespace": "drone",
+                    "pub_sensors": False,
+                    "pub_graphical_sensors": True,
+                    "pub_state": True,
+                    "sub_control": False,
+                },
+            ),
+        ]
 
-        config_multirotor0.graphical_sensors = [MonocularCamera("camera", config={"update_rate": 60.0})]
-        config_multirotor1.graphical_sensors = [MonocularCamera("camera", config={"update_rate": 60.0})]
+        config_multirotor0.graphical_sensors = [
+            MonocularCamera("camera", config={"update_rate": 60.0})
+        ]
+        config_multirotor1.graphical_sensors = [
+            MonocularCamera("camera", config={"update_rate": 60.0})
+        ]
 
         Multirotor(
             "/World/quadrotor0",
-            ROBOTS['Iris'],
+            ROBOTS["Iris"],
             0,
             [0.0, 0.0, 0.07],
             Rotation.from_euler("XYZ", [0.0, 0.0, 0.0], degrees=True).as_quat(),
@@ -98,7 +118,7 @@ class PegasusApp:
 
         Multirotor(
             "/World/quadrotor1",
-            ROBOTS['Iris'],
+            ROBOTS["Iris"],
             1,
             [5.0, 0.0, 0.07],
             Rotation.from_euler("XYZ", [0.0, 0.0, 0.0], degrees=True).as_quat(),
@@ -120,11 +140,13 @@ class PegasusApp:
         self.timeline.stop()
         simulation_app.close()
 
+
 def main():
 
     pg_app = PegasusApp()
 
     pg_app.run()
+
 
 if __name__ == "__main__":
     main()
