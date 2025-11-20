@@ -1,0 +1,71 @@
+FROM px4io/px4-dev-base-jammy:2024-05-18
+WORKDIR /home/sim/
+
+ENV ISAACSIM_PATH=/home/sim
+ENV ISAACSIM_PYTHON=/home/sim/python.sh
+ENV ISAACSIM=/home/sim/isaac-sim.sh
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get -y --quiet --no-install-recommends install \
+        wget \
+        unzip \
+        git \
+        make \
+        cmake \
+        python3-pip \
+        openssl \
+        ca-certificates \
+        libgl1-mesa-glx \
+        libgl1-mesa-dri \
+        libglx-mesa0 \
+        libglapi-mesa \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
+        libgomp1 \
+        libglu1-mesa \
+        libvulkan1 \
+        vulkan-tools \
+        mesa-vulkan-drivers \
+        libxt6 \
+        gstreamer1.0-plugins-base \
+        gstreamer1.0-plugins-good \
+        libgstreamer1.0-0 \
+    && apt-get -y autoremove \
+    && apt-get clean autoclean \
+    && rm -rf /var/lib/apt/lists/{apt,dpkg,cache,log} /tmp/* /var/tmp/*
+
+COPY isaac_run.sh /home/sim/isaac_run.sh
+RUN chmod +x /home/sim/isaac_run.sh
+
+RUN groupadd -g 1002 isaacsim && \
+    useradd -u 1002 -g isaacsim -m -s /bin/bash sim && \
+    chown sim /home/sim
+USER sim
+
+## Install Isaac Simulator
+RUN wget -q https://download.isaacsim.omniverse.nvidia.com/isaac-sim-standalone-5.1.0-linux-x86_64.zip
+RUN unzip -q /home/sim/isaac-sim-standalone-5.1.0-linux-x86_64.zip
+RUN rm isaac-sim-standalone-5.1.0-linux-x86_64.zip
+##------------------------
+
+## Install Pegasus Simulator
+RUN git clone -q https://github.com/PegasusSimulator/PegasusSimulator.git
+RUN /home/sim/python.sh -m pip install --editable PegasusSimulator/extensions/pegasus.simulator
+##------------------------
+
+## Bundle in PX4 Toolchain
+RUN git clone -q https://github.com/PX4/PX4-Autopilot.git PX4-Autopilot
+
+RUN pip install kconfiglib jinja2 empy jsonschema pyros-genmsg packaging toml numpy future
+
+WORKDIR /home/sim/PX4-Autopilot/
+RUN git submodule update --init --recursive
+RUN make px4_sitl_default
+##------------------------
+
+WORKDIR /home/sim/
+
+ENTRYPOINT ["/home/sim/isaac_run.sh"]
+CMD ["--ext-path /home/sim/PegasusSimulator/extensions scripts/script.py"]

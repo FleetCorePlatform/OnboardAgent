@@ -1,20 +1,15 @@
-from typing import Any
-
 from pydantic import BaseModel
 
 
 class Position(BaseModel):
     latitude_deg: float
     longitude_deg: float
-    absolute_altitude_m: float
     relative_altitude_m: float
 
 
 class Battery(BaseModel):
     temperature_degc: float
     voltage_v: float
-    current_battery_a: float
-    capacity_consumed_ah: float
     remaining_percent: float
 
 
@@ -25,11 +20,16 @@ class Health(BaseModel):
     is_local_position_ok: bool
     is_global_position_ok: bool
     is_home_position_ok: bool
-    is_armable: bool
+
+
+class Velocity(BaseModel):
+    ground_speed_ms: float
+    heading_deg: float
 
 
 class TelemetryData(BaseModel):
+    timestamp: float
     position: Position
     battery: Battery
     health: Health
-    in_air: bool
+    velocity: Velocity

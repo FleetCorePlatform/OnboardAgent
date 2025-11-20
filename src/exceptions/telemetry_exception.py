@@ -1,0 +1,2 @@
+class TelemetryException(Exception):
+    pass
