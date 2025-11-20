@@ -11,6 +11,8 @@ from src.core.drone_controller import MavsdkController
 from src.core.mqtt_manager import MqttManager
 from src.core.state_machine import StateMachine
 from src.exceptions.config_exceptions import ConfigException
+from src.telemetry.collector import TelemetryCollector
+from src.telemetry.publisher import TelemetryPublisher
 
 
 def main(config_path: Optional[str] = None):
@@ -40,10 +42,29 @@ def main(config_path: Optional[str] = None):
 
     state = StateMachine()
 
+    telemetry_collector = TelemetryCollector(
+        drone.system, interval_hz=config.telemetry_sample_interval
+    )
+
+    telemetry_publisher = TelemetryPublisher(
+        telemetry_collector,
+        mqtt,
+        config.telemetry_topic,
+        batch_size=config.telemetry_sample_count,
+    )
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    coordinator = JobCoordinator(config, mqtt, drone, state, loop)
+    coordinator = JobCoordinator(
+        config=config,
+        mqtt=mqtt,
+        drone=drone,
+        state=state,
+        collector=telemetry_collector,
+        publisher=telemetry_publisher,
+        loop=loop,
+    )
 
     try:
         loop.run_until_complete(coordinator.start())

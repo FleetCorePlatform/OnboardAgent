@@ -9,7 +9,10 @@ from src.core.mqtt_manager import MqttManager
 from src.core.state_machine import StateMachine
 from src.enums.execution_state import ExecutionState
 from src.enums.job_status import JobStatus
-from src.exceptions.download_exceptions import DownloadNotAllowedFolderException, DownloadException
+from src.exceptions.download_exceptions import (
+    DownloadNotAllowedFolderException,
+    DownloadException,
+)
 from src.exceptions.drone_excetions import (
     DroneUploadException,
     DroneArmException,
@@ -33,16 +36,19 @@ class JobCoordinator:
         mqtt: MqttManager,
         drone: MavsdkController,
         state: StateMachine,
+        collector: TelemetryCollector,
+        publisher: TelemetryPublisher,
         loop: asyncio.AbstractEventLoop,
     ):
         self.config = config
         self.mqtt = mqtt
         self.drone = drone
         self.state = state
+        self.telemetry_collector = collector
+        self.telemetry_publisher = publisher
         self.loop = loop
         self.current_job_id: Optional[str] = None
         self.job_document: Optional[Job] = None
-        self.telemetry_collector: Optional[TelemetryCollector] = None
 
     async def start(self):
         try:
@@ -173,22 +179,9 @@ class JobCoordinator:
         except DroneStartMissionException as e:
             raise Exception(f"Mission start failed: {e}")
 
-        # TODO: Move TelemetryCollector, and TelemetryPublisher instantiation to main.py
-
-        self.telemetry_collector = TelemetryCollector(
-            self.drone.system, interval_hz=self.config.telemetry_sample_interval
-        )
-
-        self.telemetry_publisher = TelemetryPublisher(
-            self.telemetry_collector,
-            self.mqtt,
-            self.config.telemetry_topic,
-            batch_size=10,
-        )
-
         await asyncio.gather(
             self.telemetry_publisher.start(),
-            self.telemetry_collector.start()
+            self.telemetry_collector.start(),
         )
 
         try:
@@ -197,14 +190,20 @@ class JobCoordinator:
             await self.telemetry_publisher.stop()
             await self.telemetry_collector.stop()
 
-            logger.debug(f"Telemetry samples collected: {self.telemetry_collector.queue.qsize()}")
+            logger.debug(
+                f"Telemetry samples collected: {self.telemetry_collector.queue.qsize()}"
+            )
 
             logger.debug(f"Telemetry errors: {self.telemetry_collector.error_count}")
             logger.debug(f"Publisher errors: {self.telemetry_publisher.error_count}")
             if self.telemetry_collector.last_error:
-                logger.error(f"Last telemetry error: {self.telemetry_collector.last_error}")
+                logger.error(
+                    f"Last telemetry error: {self.telemetry_collector.last_error}"
+                )
             if self.telemetry_publisher.last_error:
-                logger.error(f"Last publisher error: {self.telemetry_publisher.last_error}")
+                logger.error(
+                    f"Last publisher error: {self.telemetry_publisher.last_error}"
+                )
 
     async def _monitor_mission(self):
         """Monitor mission progress until completion."""
