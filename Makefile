@@ -22,7 +22,7 @@ format:
 	black .
 
 run: format
-	uv run -m src.main
+	uv run -m src.main .config.env
 
 test:
 ifeq ($(all),1)
