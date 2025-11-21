@@ -1,17 +1,18 @@
 #!/usr/bin/env python
-import asyncio
 
 import gi
 import numpy as np
 import time
 from ultralytics import YOLO
 
+from src.core.mqtt_manager import MqttManager
+
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst
 
 
 class StreamHandler:
-    def __init__(self, port: int, yolo_path: str, sample_rate: int):
+    def __init__(self, port: int, yolo_path: str, sample_rate: int, mqtt: MqttManager, alert_topic: str):
         Gst.init(None)
 
         self.port = port
@@ -33,6 +34,7 @@ class StreamHandler:
         self._video_pipe.set_state(Gst.State.PLAYING)
         self._video_sink = self._video_pipe.get_by_name("appsink0")
 
+        # TODO: Run stream decoding and object detection parallelly
         self._video_sink.connect("new-sample", self._decode_frame)
 
     def stop(self):
@@ -77,32 +79,32 @@ class StreamHandler:
         return results
 
 
-if __name__ == "__main__":
-    frame_skip = 15
-    frame_count = 0
-    last_process_time = 0
-    min_interval = 0.2
-
-    print("Stream processor started. Press Ctrl+C to stop.")
-
-    try:
-        while True:
-            if not video.frame_available():
-                time.sleep(0.001)
-                continue
-
-            frame = video.frame()
-            frame_count += 1
-            current_time = time.time()
-
-            if frame_count % frame_skip != 0:
-                continue
-
-            if current_time - last_process_time < min_interval:
-                continue
-
-            process_frame(frame, model)
-            last_process_time = current_time
-
-    except KeyboardInterrupt:
-        print("\nShutting down...")
+# if __name__ == "__main__":
+#     frame_skip = 15
+#     frame_count = 0
+#     last_process_time = 0
+#     min_interval = 0.2
+#
+#     print("Stream processor started. Press Ctrl+C to stop.")
+#
+#     try:
+#         while True:
+#             if not video.frame_available():
+#                 time.sleep(0.001)
+#                 continue
+#
+#             frame = video.frame()
+#             frame_count += 1
+#             current_time = time.time()
+#
+#             if frame_count % frame_skip != 0:
+#                 continue
+#
+#             if current_time - last_process_time < min_interval:
+#                 continue
+#
+#             process_frame(frame, model)
+#             last_process_time = current_time
+#
+#     except KeyboardInterrupt:
+#         print("\nShutting down...")
