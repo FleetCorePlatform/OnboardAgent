@@ -10,10 +10,10 @@ venv:
 	uv sync
 
 de:
-ifeq ($(v),"classic")
+ifeq ($(v),classic)
 	$(MAKE) venv
 	/bin/bash ./sim/gazebo_classic_dev_env.sh
-else ifeq ($(v),1)
+else ifeq ($(v),pegasus)
 	$(MAKE) venv
 	/bin/bash ./sim/pegasus_dev_env.sh
 else

@@ -12,7 +12,8 @@ run() {
 	docker run --rm -it --privileged \
 	  --env=PX4_GZ_WORLD="default" \
     --env=LOCAL_USER_ID="1002" \
-		-v /tmp/.X11-unix:/tmp/.X11-unix:ro \
+		-v "/tmp/.X11-unix:/tmp/.X11-unix:ro" \
+		-v "$(pwd)/sim/gazebo/worlds:/home/sim/PX4-Autopilot/Tools/simulation/gz/worlds" \
 		-e DISPLAY="$DISPLAY" \
 		-e NVIDIA_VISIBLE_DEVICES=all \
     -e NVIDIA_DRIVER_CAPABILITIES=all \

@@ -50,7 +50,5 @@ WORKDIR /home/sim/PX4-Autopilot/
 RUN git submodule update --init --recursive
 RUN make px4_sitl_default
 
-COPY ./worlds/* Tools/simulation/gz/worlds/
-
 ENTRYPOINT ["make"]
 CMD ["px4_sitl", "gz_x500_mono_cam"]
