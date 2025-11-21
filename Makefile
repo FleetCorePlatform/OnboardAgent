@@ -2,15 +2,18 @@
 
 default: run
 
+dep:
+	/bin/bash -c ./scripts/system_dependencies.sh
+
 venv:
 	@if [ ! -d "./.venv" ]; then uv venv; fi
 	uv sync
 
 de:
-ifeq ($(classic),1)
+ifeq ($(v),"classic")
 	$(MAKE) venv
 	/bin/bash ./sim/gazebo_classic_dev_env.sh
-else ifeq ($(pegasus),1)
+else ifeq ($(v),1)
 	$(MAKE) venv
 	/bin/bash ./sim/pegasus_dev_env.sh
 else

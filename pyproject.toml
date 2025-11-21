@@ -27,9 +27,9 @@ pythonpath = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
-[tool.uv]
-dev-dependencies = [
-    "pygobject>=3.54.5",
+[dependency-groups]
+dev = [
+    "pygobject==3.50.0",
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",
 ]
