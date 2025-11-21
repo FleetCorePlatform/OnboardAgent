@@ -35,9 +35,16 @@ class Config:
         self.internal_topic = f"$aws/things/{self.thing_name}/jobs/notify"
         self.cancel_topic = f"groups/{self.thing_name}/cancel"
         self.telemetry_topic = f"devices/{self.thing_name}/telemetry"
+        self.alert_topic = f"devices/{self.thing_name}/detection"
         self.yolo_model_path: str = self._require_path(raw, "YOLO_MODEL_FILEPATH")
         self.stream_sample_rate: int = self._require_int(raw, "STREAM_SAMPLE_RATE")
         self.stream_port: int = self._require_int(raw, "STREAM_PORT")
+        self.presence_confirmation_frames: int = self._require_int(
+            raw, "PRESENCE_CONFIRMATION_FRAMES"
+        )
+        self.detection_confidence_threshold: int = self._require_int(
+            raw, "DETECTION_CONFIDENCE_THRESHOLD"
+        )
 
     def _require(self, config: dict | _Environ[str], key: str) -> str:
         value = config.get(key)

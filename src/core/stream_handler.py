@@ -1,8 +1,13 @@
 #!/usr/bin/env python
+import asyncio
+from typing import Optional, Iterable, Tuple
 
 import gi
+import loguru
 import numpy as np
 import time
+
+from mypy.types import AnyType
 from ultralytics import YOLO
 
 from src.core.mqtt_manager import MqttManager
@@ -12,18 +17,37 @@ from gi.repository import Gst
 
 
 class StreamHandler:
-    def __init__(self, port: int, yolo_path: str, sample_rate: int, mqtt: MqttManager, alert_topic: str):
+    def __init__(
+        self,
+        port: int,
+        yolo_path: str,
+        sample_rate: int,
+        mqtt,
+        alert_topic: str,
+        presence_confirmation_frames: int,
+        confidence_threshold: int,
+    ) -> None:
         Gst.init(None)
 
         self.port = port
         self.model = YOLO(yolo_path)
         self.sample_rate = sample_rate
+        self.mqtt_manager = mqtt
+        self.alert_topic = alert_topic
+        self.presence_confirmation_frames = presence_confirmation_frames
+        self.confidence_threshold: float = confidence_threshold / 100
 
-        self._frame = None
+        self._running = False
+        self._frame_count = 0
+        self._last_process_time = 0
+        self._consecutive_detection_frames = 0
+        self._min_interval = 0.2
+
+        self._frame: Optional[np.ndarray] | None = None
         self._video_pipe = None
         self._video_sink = None
 
-    def run(self):
+    async def run(self):
         command: str = (
             f"udpsrc port={self.port} ! application/x-rtp, payload=96 ! rtph264depay ! h264parse \
             ! avdec_h264 ! videoconvert ! video/x-raw,format=(string)BGR \
@@ -34,11 +58,15 @@ class StreamHandler:
         self._video_pipe.set_state(Gst.State.PLAYING)
         self._video_sink = self._video_pipe.get_by_name("appsink0")
 
-        # TODO: Run stream decoding and object detection parallelly
         self._video_sink.connect("new-sample", self._decode_frame)
+        await asyncio.create_task(self._start_detection())
 
     def stop(self):
         self._video_pipe.set_state(Gst.State.NULL)
+        self._running = False
+        self._frame_count = 0
+        self._last_process_time = 0
+        self._consecutive_detection_frames = 0
 
     def _decode_frame(self, sink):
         sample = sink.emit("pull-sample")
@@ -57,54 +85,54 @@ class StreamHandler:
 
         return Gst.FlowReturn.OK
 
-    async def _check_frame(self):
-        if type(self._frame) == type(None):
-            time.sleep(0.001)
+    async def _start_detection(self):
+        self._running = True
 
+        while self._running:
+            if type(self._frame) == type(None):
+                time.sleep(0.001)
+                continue
+
+            current_time = time.time()
+
+            if self._frame_count % self.sample_rate != 0:
+                continue
+
+            if current_time - self._last_process_time < self._min_interval:
+                continue
+
+            detection, results = self._run_human_detection(self._frame)
+            if detection:
+                self._consecutive_detection_frames += 1
+
+                if (
+                    self._consecutive_detection_frames
+                    == self.presence_confirmation_frames
+                ):
+                    self._send_detection_alert()
+                    self._consecutive_detection_frames = 0
+                    continue
+
+            else:
+                self._consecutive_detection_frames = 0
+
+            self._last_process_time = current_time
+
+    def _run_human_detection(self, frame) -> Tuple[bool, list[AnyType] | None]:
         results = self.model(frame, verbose=False)
 
         for result in results:
             boxes = result.boxes
             for box in boxes:
-                cls_id = int(box.cls[0])
-                conf = float(box.conf[0])
-                class_name = self.model.names[cls_id]
-                xyxy = box.xyxy[0].cpu().numpy()
-                x1, y1, x2, y2 = map(int, xyxy)
+                class_id = int(box.cls[0])
+                confidence = float(box.conf[0])
+                # xyxy = box.xyxy[0].cpu().numpy()
+                # x1, y1, x2, y2 = map(int, xyxy)
 
-                # print(
-                #     f"Detected: {class_name} (class {cls_id}), confidence={conf:.2f}, bbox=[{x1},{y1},{x2},{y2}]"
-                # )
+                if class_id == 0 and self.confidence_threshold <= confidence:
+                    return True, results
 
-        return results
+        return False, None
 
-
-# if __name__ == "__main__":
-#     frame_skip = 15
-#     frame_count = 0
-#     last_process_time = 0
-#     min_interval = 0.2
-#
-#     print("Stream processor started. Press Ctrl+C to stop.")
-#
-#     try:
-#         while True:
-#             if not video.frame_available():
-#                 time.sleep(0.001)
-#                 continue
-#
-#             frame = video.frame()
-#             frame_count += 1
-#             current_time = time.time()
-#
-#             if frame_count % frame_skip != 0:
-#                 continue
-#
-#             if current_time - last_process_time < min_interval:
-#                 continue
-#
-#             process_frame(frame, model)
-#             last_process_time = current_time
-#
-#     except KeyboardInterrupt:
-#         print("\nShutting down...")
+    def _send_detection_alert(self):
+        loguru.logger.debug("[W.I.P] Placeholder detection alert!")
