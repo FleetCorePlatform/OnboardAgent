@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import asyncio
-from typing import Optional, Iterable, Tuple
+from typing import Optional, Tuple
 
 import gi
 import loguru
@@ -38,6 +38,8 @@ class StreamHandler:
         self.confidence_threshold: float = confidence_threshold / 100
 
         self._running = False
+        self._task = None
+
         self._frame_count = 0
         self._last_process_time = 0
         self._consecutive_detection_frames = 0
@@ -46,29 +48,47 @@ class StreamHandler:
         self._frame: Optional[np.ndarray] | None = None
         self._video_pipe = None
         self._video_sink = None
+        self._handler: Optional[int] | None = None
 
-    async def run(self):
+    async def start(self):
+        if self._running:
+            return
+
+        self._running = True
+
         command: str = (
             f"udpsrc port={self.port} ! application/x-rtp, payload=96 ! rtph264depay ! h264parse \
             ! avdec_h264 ! videoconvert ! video/x-raw,format=(string)BGR \
-            ! appsink emit-signals=true sync=false max-buffers=2 drop=true"
+            ! appsink name=appsink emit-signals=true sync=false max-buffers=2 drop=true"
         )
 
         self._video_pipe = Gst.parse_launch(command)
         self._video_pipe.set_state(Gst.State.PLAYING)
-        self._video_sink = self._video_pipe.get_by_name("appsink0")
+        self._video_sink = self._video_pipe.get_by_name("appsink")
 
-        self._video_sink.connect("new-sample", self._decode_frame)
-        await asyncio.create_task(self._start_detection())
+        self._handler = self._video_sink.connect("new-sample", self._decode_frame)
+        self._task = asyncio.create_task(self._start_detection())
 
-    def stop(self):
-        self._video_pipe.set_state(Gst.State.NULL)
+    async def stop(self):
         self._running = False
+
+        if self._task:
+            await self._task
+
+        self._video_sink.disconnect(self._handler)
+        self._video_pipe.set_state(Gst.State.NULL)
+
+        self._video_pipe = None
+        self._video_sink = None
+
         self._frame_count = 0
         self._last_process_time = 0
         self._consecutive_detection_frames = 0
 
     def _decode_frame(self, sink):
+        if not self._running:
+            return Gst.FlowReturn.OK
+
         sample = sink.emit("pull-sample")
         buf = sample.get_buffer()
         caps = sample.get_caps()
@@ -86,19 +106,19 @@ class StreamHandler:
         return Gst.FlowReturn.OK
 
     async def _start_detection(self):
-        self._running = True
-
         while self._running:
             if type(self._frame) == type(None):
-                time.sleep(0.001)
+                await asyncio.sleep(0.001)
                 continue
 
             current_time = time.time()
 
             if self._frame_count % self.sample_rate != 0:
+                await asyncio.sleep(0)
                 continue
 
             if current_time - self._last_process_time < self._min_interval:
+                await asyncio.sleep(0)
                 continue
 
             detection, results = self._run_human_detection(self._frame)
@@ -117,6 +137,7 @@ class StreamHandler:
                 self._consecutive_detection_frames = 0
 
             self._last_process_time = current_time
+            await asyncio.sleep(0)
 
     def _run_human_detection(self, frame) -> Tuple[bool, list[AnyType] | None]:
         results = self.model(frame, verbose=False)

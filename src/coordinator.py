@@ -7,6 +7,7 @@ from src.config import Config
 from src.core.drone_controller import MavsdkController
 from src.core.mqtt_manager import MqttManager
 from src.core.state_machine import StateMachine
+from src.core.stream_handler import StreamHandler
 from src.enums.execution_state import ExecutionState
 from src.enums.job_status import JobStatus
 from src.exceptions.download_exceptions import (
@@ -38,6 +39,7 @@ class JobCoordinator:
         state: StateMachine,
         collector: TelemetryCollector,
         publisher: TelemetryPublisher,
+        recognition: StreamHandler,
         loop: asyncio.AbstractEventLoop,
     ):
         self.config = config
@@ -46,6 +48,7 @@ class JobCoordinator:
         self.state = state
         self.telemetry_collector = collector
         self.telemetry_publisher = publisher
+        self.recognition = recognition
         self.loop = loop
         self.current_job_id: Optional[str] = None
         self.job_document: Optional[Job] = None
@@ -179,7 +182,9 @@ class JobCoordinator:
         except DroneStartMissionException as e:
             raise Exception(f"Mission start failed: {e}")
 
+        logger.debug(f"Starting detection, and telemetry systems..")
         await asyncio.gather(
+            self.recognition.start(),
             self.telemetry_publisher.start(),
             self.telemetry_collector.start(),
         )
@@ -187,6 +192,7 @@ class JobCoordinator:
         try:
             await self._monitor_mission()
         finally:
+            await self.recognition.stop()
             await self.telemetry_publisher.stop()
             await self.telemetry_collector.stop()
 
