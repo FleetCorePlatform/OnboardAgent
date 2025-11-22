@@ -110,17 +110,17 @@
     <include>
       <uri>https://fuel.ignitionrobotics.org/1.0/OpenRobotics/models/Oak Tree</uri>
       <name>Pine Tree_17</name>
-      <pose>4.64341 -9.56548 0 0 -0 0</pose>
+      <pose>4.64341 -15.09 0 0 -0 0</pose>
     </include>
     <include>
       <uri>https://fuel.ignitionrobotics.org/1.0/OpenRobotics/models/Pine Tree</uri>
       <name>Pine Tree_18</name>
-      <pose>2.39497 -9.53658 0 0 -0 0</pose>
+      <pose>2.39497 -18.25 0 0 -0 0</pose>
     </include>
     <include>
       <uri>https://fuel.ignitionrobotics.org/1.0/OpenRobotics/models/Oak Tree</uri>
       <name>Pine Tree_19</name>
-      <pose>-0.98 -9.12685 0 0 -0 0</pose>
+      <pose>-0.98 -18.69 0 0 -0 0</pose>
     </include>
     <include>
       <uri>https://fuel.ignitionrobotics.org/1.0/OpenRobotics/models/Pine Tree</uri>
