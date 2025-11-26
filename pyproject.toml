@@ -16,6 +16,8 @@ dependencies = [
     "python-dotenv>=1.1.1",
     "rich>=14.1.0",
     "ultralytics>=8.3.228",
+    "pygobject-stubs>=2.14.0",
+    "pygobject==3.50.0",
 ]
 
 [[tool.mypy.overrides]]
@@ -29,7 +31,6 @@ asyncio_default_fixture_loop_scope = "function"
 
 [dependency-groups]
 dev = [
-    "pygobject==3.50.0",
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",
 ]
