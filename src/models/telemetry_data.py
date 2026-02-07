@@ -28,6 +28,7 @@ class Velocity(BaseModel):
 
 
 class TelemetryData(BaseModel):
+    device_name: str
     timestamp: float
     position: Position
     battery: Battery

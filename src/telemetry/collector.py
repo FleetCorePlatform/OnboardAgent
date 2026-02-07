@@ -6,11 +6,13 @@ from typing import Optional
 import loguru
 from mavsdk import System as MavSystem
 
+from src.config import Config
 from src.models.telemetry_data import TelemetryData, Position, Battery, Health, Velocity
 
 
 class TelemetryCollector:
-    def __init__(self, drone: MavSystem, interval_hz: float) -> None:
+    def __init__(self, config: Config, drone: MavSystem, interval_hz: float) -> None:
+        self.device_name = config.thing_name
         self.drone = drone
         self.interval = 1.0 / interval_hz
         self.queue = asyncio.Queue(maxsize=100)
@@ -59,6 +61,7 @@ class TelemetryCollector:
         ground_speed: float = sqrt(velocity_raw.east_m_s**2 + velocity_raw.north_m_s**2)
 
         data: TelemetryData = TelemetryData(
+            device_name=self.device_name,
             timestamp=datetime.now().timestamp(),
             position=Position(**position_raw.__dict__),
             battery=Battery(**battery_raw.__dict__),
