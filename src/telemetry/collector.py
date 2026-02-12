@@ -11,8 +11,8 @@ from src.models.telemetry_data import TelemetryData, Position, Battery, Health, 
 
 
 class TelemetryCollector:
-    def __init__(self, config: Config, drone: MavSystem, interval_hz: float) -> None:
-        self.device_name = config.thing_name
+    def __init__(self, device_name: str, drone: MavSystem, interval_hz: float) -> None:
+        self.device_name = device_name
         self.drone = drone
         self.interval = 1.0 / interval_hz
         self.queue = asyncio.Queue(maxsize=100)

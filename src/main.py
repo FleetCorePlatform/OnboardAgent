@@ -44,7 +44,9 @@ def main(config_path: Optional[str] = None):
     state = StateMachine()
 
     telemetry_collector = TelemetryCollector(
-        config=config, drone=drone.system, interval_hz=config.telemetry_sample_interval
+        device_name=config.thing_name,
+        drone=drone.system,
+        interval_hz=config.telemetry_sample_interval,
     )
 
     telemetry_publisher = TelemetryPublisher(
