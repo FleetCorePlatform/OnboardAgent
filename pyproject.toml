@@ -18,6 +18,7 @@ dependencies = [
     "ultralytics>=8.3.228",
     "pygobject-stubs>=2.14.0",
     "pygobject==3.50.0",
+    "boto3>=1.42.47",
 ]
 
 [[tool.mypy.overrides]]
