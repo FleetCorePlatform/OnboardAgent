@@ -7,6 +7,7 @@ from loguru import logger
 
 from src.config import Config
 from src.coordinator import JobCoordinator
+from src.core.credential_provider import CredentialProvider
 from src.core.drone_controller import MavsdkController
 from src.core.mqtt_manager import MqttManager
 from src.core.state_machine import StateMachine
@@ -80,17 +81,26 @@ def main(config_path: Optional[str] = None):
         loop=loop,
     )
 
-    try:
-        loop.run_until_complete(coordinator.start())
-        loop.run_until_complete(coordinator.run())  # Blocks until shutdown
-    except KeyboardInterrupt:
-        logger.info("Shutdown requested")
-    except Exception as e:
-        logger.error(f"Fatal error: {e}")
-        sys.exit(1)
-    finally:
-        loop.run_until_complete(coordinator.stop())
-        loop.close()
+    c = CredentialProvider(
+        config.cert_filepath,
+        config.pri_key_filepath,
+        config.ca_filepath,
+        config.role_alias,
+        config.thing_name,
+    )
+    print(c.get_credentials())
+
+    # try:
+    #     loop.run_until_complete(coordinator.start())
+    #     loop.run_until_complete(coordinator.run())  # Blocks until shutdown
+    # except KeyboardInterrupt:
+    #     logger.info("Shutdown requested")
+    # except Exception as e:
+    #     logger.error(f"Fatal error: {e}")
+    #     sys.exit(1)
+    # finally:
+    #     loop.run_until_complete(coordinator.stop())
+    #     loop.close()
 
 
 if __name__ == "__main__":
