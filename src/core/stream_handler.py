@@ -11,6 +11,7 @@ from mypy.types import AnyType
 from ultralytics import YOLO
 
 from src.core.mqtt_manager import MqttManager
+from src.models.credentials_model import CredentialsModel
 
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst
@@ -50,24 +51,49 @@ class StreamHandler:
         self._video_sink = None
         self._handler: Optional[int] | None = None
 
+        self._valve = None
+        self._ws_sink = None
+
     async def start(self):
         if self._running:
             return
 
         self._running = True
 
-        command: str = (
-            f"udpsrc port={self.port} ! application/x-rtp, payload=96 ! rtph264depay ! h264parse \
-            ! avdec_h264 ! videoconvert ! video/x-raw,format=(string)BGR \
-            ! appsink name=appsink emit-signals=true sync=false max-buffers=2 drop=true"
+        command = (
+            f"udpsrc port={self.port} ! application/x-rtp, payload=96 ! rtph264depay ! h264parse ! "
+            "tee name=t "
+
+            # Branch 1: YOLO
+            "t. ! queue ! avdec_h264 ! videoconvert ! video/x-raw,format=BGR ! "
+            "appsink name=appsink emit-signals=true sync=false max-buffers=2 drop=true "
+
+            # Branch 2: AWS Kinesis WebRTC
+            "t. ! queue ! valve name=stream_valve drop=True ! "
+            "x264enc bitrate=512 tune=zerolatency speed-preset=ultrafast ! "
+            "video/x-h264,profile=baseline ! "
+            "awskvswebrtcsink name=ws aws-region=eu-west-1 "
         )
 
         self._video_pipe = Gst.parse_launch(command)
         self._video_pipe.set_state(Gst.State.PLAYING)
         self._video_sink = self._video_pipe.get_by_name("appsink")
 
+        self._valve = self._video_pipe.get_by_name("stream_valve")
+        self._ws_sink = self._video_pipe.get_by_name("ws")
+
         self._handler = self._video_sink.connect("new-sample", self._decode_frame)
         self._task = asyncio.create_task(self._start_detection())
+
+    def set_streaming_enabled(self, enabled: bool):
+        if self._valve:
+            self._valve.set_property("drop", not enabled)
+
+    def update_aws_credentials(self, creds: CredentialsModel):
+        if self._ws_sink:
+            self._ws_sink.set_property("access-key", creds.access_key_id)
+            self._ws_sink.set_property("secret-key", creds.secret_access_key)
+            self._ws_sink.set_property("session-token", creds.session_token)
 
     async def stop(self):
         self._running = False
