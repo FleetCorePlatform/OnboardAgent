@@ -12,10 +12,19 @@ run() {
 	docker run --rm -it --privileged \
 		-v /tmp/.X11-unix:/tmp/.X11-unix:ro \
 		-e DISPLAY="$DISPLAY" \
+		-e NVIDIA_VISIBLE_DEVICES=all \
+    -e NVIDIA_DRIVER_CAPABILITIES=all \
+    --device=/dev/dri:/dev/dri \
+    --gpus all \
 		--network host \
 		--name="$CONTAINER_NAME" \
 		fleetcoreagent/px4-dev-gazebo-classic-focal:latest
 }
+
+if ! command -v nvidia-smi &> /dev/null; then
+  echo "No Nvidia GPU detected, exiting.."
+  exit 1
+fi
 
 if [ -z "$(docker images -q fleetcoreagent/px4-dev-gazebo-classic-focal:latest)" ]; then
 	echo "Image not found, building..."
