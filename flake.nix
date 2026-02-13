@@ -13,6 +13,7 @@
 		    just
 		    uv
 		    python313
+		    black
                 ];
             };
         };

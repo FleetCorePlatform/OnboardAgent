@@ -15,19 +15,10 @@ run() {
 		-v "/tmp/.X11-unix:/tmp/.X11-unix:ro" \
 		-v "$(pwd)/sim/gazebo/worlds:/home/sim/PX4-Autopilot/Tools/simulation/gz/worlds" \
 		-e DISPLAY="$DISPLAY" \
-		-e NVIDIA_VISIBLE_DEVICES=all \
-    -e NVIDIA_DRIVER_CAPABILITIES=all \
-    --device=/dev/dri:/dev/dri \
-    --gpus all \
 		--network host \
 		--name="$CONTAINER_NAME" \
 		fleetcoreagent/px4-dev-gazebo-jammy:latest
 }
-
-if ! command -v nvidia-smi; then
-  echo "No Nvidia GPU detected, exiting.."
-  exit 1
-fi
 
 if [ -z "$(docker images -q fleetcoreagent/px4-dev-gazebo-jammy:latest)" ]; then
 	echo "Image not found, building..."
