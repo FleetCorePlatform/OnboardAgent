@@ -2,6 +2,7 @@ from typing import AsyncIterator
 
 from mavsdk import System as MavSystem
 from mavsdk.action import ActionError
+from mavsdk.core import ConnectionState
 from mypy.types import AnyType
 
 from src.exceptions.drone_excetions import *
@@ -12,7 +13,7 @@ from src.enums.connection_types import ConnectionTypes
 
 class MavsdkController:
     def __init__(self, address: str, port: int, protocol: ConnectionTypes) -> None:
-        self.__connected = False
+        self._connected = False
         self.address: str = address
         self.port: int = port
         self.protocol: str = protocol.value
@@ -35,9 +36,12 @@ class MavsdkController:
                 if state.is_connected:
                     break
 
-            self.__connected = True
+            self._connected = True
         except ActionError as e:
             raise DroneConnectException(e)
+
+    async def get_connection_state(self) -> bool:
+        return self._connected
 
     async def arm(self) -> None:
         """Arm the drone."""

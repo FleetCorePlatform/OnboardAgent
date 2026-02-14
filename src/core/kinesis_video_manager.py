@@ -202,11 +202,14 @@ class KinesisVideoClient:
         def on_track(track):
             MediaBlackhole().addTrack(track)
 
-        pc.addTrack(self.relay.subscribe(self.video_track))
-
         await pc.setRemoteDescription(
             RTCSessionDescription(sdp=payload["sdp"], type=payload["type"])
         )
+
+        video_transceiver_exists = any(t.kind == "video" for t in pc.getTransceivers())
+        if video_transceiver_exists:
+            pc.addTrack(self.relay.subscribe(self.video_track))
+
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
 
