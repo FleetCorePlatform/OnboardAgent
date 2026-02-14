@@ -4,6 +4,7 @@ from src.config import Config
 from src.core.mqtt_manager import MqttManager
 from src.core.drone_controller import MavsdkController
 from src.core.state_machine import StateMachine
+from src.core.upload_manager import UploadManager
 from src.telemetry.collector import TelemetryCollector
 from src.telemetry.publisher import TelemetryPublisher
 from src.core.stream_handler import StreamHandler
@@ -66,8 +67,13 @@ class ApplicationContainer(containers.DeclarativeContainer):
         thing_name=config.provided.thing_name,
     )
 
+    upload_manager = providers.Singleton(
+        UploadManager, credential_provider=credential_provider
+    )
+
     stream_handler = providers.Singleton(
         StreamHandler,
+        device_name=config.provided.thing_name,
         port=config.provided.stream_port,
         yolo_path=config.provided.yolo_model_path,
         sample_rate=config.provided.stream_sample_rate,
@@ -78,6 +84,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         channel_arn=config.provided.channel_arn,
         kvs_client_factory=kvs_client_factory.provider,
         credential_provider=credential_provider,
+        upload_manager=upload_manager,
     )
 
     coordinator = providers.Singleton(
@@ -88,6 +95,6 @@ class ApplicationContainer(containers.DeclarativeContainer):
         state=state_machine,
         collector=telemetry_collector,
         publisher=telemetry_publisher,
-        recognition=stream_handler,
+        streamer=stream_handler,
         loop=event_loop,
     )

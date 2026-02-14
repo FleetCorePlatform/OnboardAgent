@@ -10,17 +10,14 @@ from src.exceptions.config_exceptions import ConfigException
 
 
 def main(config_path: Optional[str] = None):
-    # 1. Setup Loop
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    # 2. Initialize Container
     container = ApplicationContainer(
         event_loop=loop,
         config_path=config_path,
     )
 
-    # 3. Setup Logging
     try:
         config = container.config()
         if config.verbose:
@@ -30,20 +27,12 @@ def main(config_path: Optional[str] = None):
         logger.error(f"Configuration error: {e}")
         sys.exit(1)
 
-    # 4. Wire & Run
     stream_handler = container.stream_handler()
-    # coordinator = container.coordinator()
+    coordinator = container.coordinator()
 
     try:
-        # Start core services
-        loop.run_until_complete(stream_handler.start())
-
-        # Enable streaming (will fetch creds automatically)
-        loop.run_until_complete(stream_handler.set_streaming_state(True))
-
-        # Start coordinator (when ready)
-        # loop.run_until_complete(coordinator.start())
-        # loop.run_until_complete(coordinator.run())
+        loop.run_until_complete(coordinator.start())
+        loop.run_until_complete(coordinator.run())
 
         loop.run_forever()
     except KeyboardInterrupt:
