@@ -16,8 +16,6 @@
 
 **enums/job_status.py** - AWS IoT job statuses: QUEUED, IN_PROGRESS, SUCCEEDED, FAILED, REJECTED
 
-**jobs/processor.py** - JobProcessor class receives job documents, validates structure, extracts job type, instantiates appropriate command class, passes to coordinator for execution
-
 **jobs/status_reporter.py** - Updates job execution status to AWS IoT. Handles IN_PROGRESS, SUCCEEDED, FAILED, REJECTED updates. Manages retry logic for network failures
 
 **jobs/commands/base.py** - JobCommand abstract base class. Defines interface: async execute(context), async rollback(), timeout_seconds property. All job commands inherit from this

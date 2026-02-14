@@ -6,7 +6,6 @@ from typing import Optional
 import loguru
 from mavsdk import System as MavSystem
 
-from src.config import Config
 from src.models.telemetry_data import TelemetryData, Position, Battery, Health, Velocity
 
 
