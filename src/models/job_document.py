@@ -1,24 +1,18 @@
-from typing import List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
-class Input(BaseModel):
-    handler: str
-    args: List[str]
-    path: str
-
-
-class Action(BaseModel):
-    name: str
-    type: str
-    input: Input
-    runAsUser: str
-
-
-class Step(BaseModel):
-    action: Action
+class Metadata(BaseModel):
+    outpost: str
+    group: str
+    bucket: str
 
 
 class Job(BaseModel):
-    version: str
-    steps: List[Step]
+    operation: str
+    mission_uuid: str = Field(..., alias="mission_uuid")
+    download_url: str
+    download_path: str
+    metadata: Metadata
+
+    class Config:
+        populate_by_name = True
