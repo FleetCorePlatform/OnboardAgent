@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 import asyncio
+import io
 import time
 from typing import Optional, Tuple, Any, List, Callable
 
+import cv2
 import gi
 import loguru
 import numpy as np
@@ -11,6 +13,8 @@ from ultralytics import YOLO
 from src.core.kinesis_video_manager import KinesisVideoClient
 from src.core.mqtt_manager import MqttManager
 from src.core.credential_provider import CredentialProvider
+from src.core.upload_manager import UploadManager
+from src.models.job_document import Metadata
 from src.utils.gst_video_track import GstVideoTrack
 
 gi.require_version("Gst", "1.0")
@@ -20,6 +24,7 @@ from gi.repository import Gst
 class StreamHandler:
     def __init__(
         self,
+        device_name: str,
         port: int,
         yolo_path: str,
         sample_rate: int,
@@ -30,26 +35,29 @@ class StreamHandler:
         channel_arn: str,
         kvs_client_factory: Callable[..., KinesisVideoClient],
         credential_provider: CredentialProvider,
+        upload_manager: UploadManager,
     ) -> None:
         Gst.init(None)
 
-        self.port = port
-        self.model = YOLO(yolo_path)
-        self.sample_rate = sample_rate
-        self.mqtt_manager = mqtt
-        self.alert_topic = alert_topic
-        self.presence_confirmation_frames = presence_confirmation_frames
-        self.confidence_threshold: float = confidence_threshold / 100
-        self.channel_arn = channel_arn
-        self.kvs_client_factory = kvs_client_factory
-        self.credential_provider = credential_provider
+        self._device_name = device_name
+        self._port = port
+        self._model = YOLO(yolo_path)
+        self._sample_rate = sample_rate
+        self._mqtt_manager = mqtt
+        self._alert_topic = alert_topic
+        self._presence_confirmation_frames = presence_confirmation_frames
+        self._confidence_threshold: float = confidence_threshold / 100
+        self._channel_arn = channel_arn
+        self._kvs_client_factory = kvs_client_factory
+        self._credential_provider = credential_provider
+        self._upload_manager = upload_manager
 
         try:
-            self.aws_region = self.channel_arn.split(":")[3]
+            self._aws_region = self._channel_arn.split(":")[3]
         except IndexError:
-            self.aws_region = "eu-west-1"
+            self._aws_region = "eu-west-1"
             loguru.logger.warning(
-                f"Could not parse region from ARN, defaulting to {self.aws_region}"
+                f"Could not parse region from ARN, defaulting to {self._aws_region}"
             )
 
         self._running = False
@@ -66,6 +74,14 @@ class StreamHandler:
         self._last_process_time = 0
         self._consecutive_detection_frames = 0
         self._min_interval = 0.2
+        self._current_mission_uuid: Optional[str] = None
+        self._current_mission_metadata: Optional[Metadata] = None
+
+    def set_active_mission_info(
+        self, mission_uuid: Optional[str], metadata: Optional[Metadata]
+    ):
+        self._current_mission_uuid = mission_uuid
+        self._current_mission_metadata = metadata
 
     async def start(self):
         if self._running:
@@ -78,7 +94,7 @@ class StreamHandler:
         self._kvs_client = None
 
         command = (
-            f"udpsrc port={self.port} ! application/x-rtp, payload=96 ! rtph264depay ! h264parse ! "
+            f"udpsrc port={self._port} ! application/x-rtp, payload=96 ! rtph264depay ! h264parse ! "
             "avdec_h264 ! videoconvert ! video/x-raw,format=BGR ! "
             "appsink name=appsink emit-signals=true sync=false max-buffers=2 drop=true "
         )
@@ -100,10 +116,10 @@ class StreamHandler:
                 loguru.logger.warning("Streaming already enabled")
                 return
 
-            creds = await asyncio.to_thread(self.credential_provider.get_credentials)
+            creds = await asyncio.to_thread(self._credential_provider.get_credentials)
 
-            self._kvs_client = self.kvs_client_factory(
-                region=self.aws_region,
+            self._kvs_client = self._kvs_client_factory(
+                region=self._aws_region,
                 credentials=creds,
                 video_track=self._gst_track,
             )
@@ -181,7 +197,7 @@ class StreamHandler:
             current_time = time.time()
             self._frame_count += 1
 
-            if self._frame_count % self.sample_rate != 0:
+            if self._frame_count % self._sample_rate != 0:
                 await asyncio.sleep(0)
                 continue
 
@@ -194,9 +210,16 @@ class StreamHandler:
                 self._consecutive_detection_frames += 1
                 if (
                     self._consecutive_detection_frames
-                    == self.presence_confirmation_frames
+                    == self._presence_confirmation_frames
                 ):
-                    self._send_detection_alert()
+                    if self._current_mission_uuid:
+                        asyncio.create_task(
+                            asyncio.to_thread(
+                                self._send_detection_alert,
+                                self._frame.copy(),
+                                self._current_mission_uuid,
+                            )
+                        )
                     self._consecutive_detection_frames = 0
             else:
                 self._consecutive_detection_frames = 0
@@ -206,19 +229,36 @@ class StreamHandler:
 
     def _run_human_detection(self, frame) -> Tuple[bool, Optional[List[Any]]]:
         try:
-            results = self.model(frame, verbose=False)
+            results = self._model(frame, verbose=False)
             for result in results:
                 for box in result.boxes:
                     cls = int(box.cls[0])
                     conf = float(box.conf[0])
-                    if cls == 0 and conf >= self.confidence_threshold:
+                    if cls == 0 and conf >= self._confidence_threshold:
                         return True, results
         except Exception as e:
             loguru.logger.error(f"Inference error: {e}")
 
         return False, None
 
-    def _send_detection_alert(self):
-        loguru.logger.warning("[W.I.P] Person Detected!")
-        # if self.mqtt_manager:
-        #     self.mqtt_manager.publish(self.alert_topic, {"event": "person_detected"})
+    def _send_detection_alert(self, frame: np.ndarray, mission_uuid: str):
+        timestamp = int(time.time())
+        file_name = f"{timestamp}_detection.jpg"
+        s3_key = f"detections/{self._current_mission_metadata.outpost}/{self._current_mission_metadata.group}/mission/{mission_uuid}/{self._device_name}/{file_name}"
+
+        asyncio.create_task(self._async_upload(frame, s3_key))
+
+    async def _async_upload(self, frame, s3_key):
+        try:
+            _, buffer = cv2.imencode(".jpg", frame)
+            io_buf = io.BytesIO(buffer)
+
+            await asyncio.to_thread(
+                self._upload_manager.upload_bytes,
+                io_buf,
+                self._current_mission_metadata.bucket,
+                s3_key,
+            )
+            loguru.logger.info(f"Frame uploaded to {s3_key}")
+        except Exception as e:
+            loguru.logger.error(f"Upload failed: {e}")
