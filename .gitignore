@@ -1,5 +1,5 @@
 # YOLO models
-models/
+./models/
 
 # IDE
 .idea/

@@ -7,3 +7,4 @@ class JobStatus(Enum):
     SUCCEEDED = (3,)
     FAILED = (4,)
     REJECTED = (5,)
+    CANCELED = (6,)
