@@ -3,9 +3,11 @@ from typing import AsyncIterator
 from mavsdk import System as MavSystem
 from mavsdk.action import ActionError
 from mavsdk.core import ConnectionState
+from mavsdk.telemetry import TelemetryError
 from mypy.types import AnyType
 
 from src.exceptions.drone_excetions import *
+from src.models.drone_coordinates import DroneCoordinates
 from src.models.mission_progress import MissionProgressData
 
 from src.enums.connection_types import ConnectionTypes
@@ -96,3 +98,14 @@ class MavsdkController:
 
         except ActionError as e:
             raise DroneStreamInAirException(e)
+
+    async def coordinate_stream(self) -> AsyncIterator[DroneCoordinates]:
+        try:
+            async for coordinates in self.system.telemetry.position():
+                yield DroneCoordinates(
+                    latitude_deg=coordinates.latitude_deg,
+                    longitude_deg=coordinates.longitude_deg,
+                )
+        except TelemetryError as e:
+            raise DroneStreamCoordinatesException(e)
+

@@ -30,3 +30,6 @@ class DroneStreamMissionProgressException(DroneException):
 
 class DroneStreamInAirException(DroneException):
     pass
+
+class DroneStreamCoordinatesException(DroneException):
+    pass
