@@ -1,5 +1,8 @@
 # YOLO models
-./models/
+yolov8n.pt
+
+# Direnv folder
+.direnv/
 
 # IDE
 .idea/
@@ -192,5 +195,3 @@ poetry.toml
 pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
-
-uv.lock
