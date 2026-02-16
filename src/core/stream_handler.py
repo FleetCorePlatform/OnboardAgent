@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 import asyncio
 import io
+import json
 import time
-from typing import Optional, Tuple, Any, List, Callable
+from datetime import datetime, UTC
+from typing import Optional, Tuple, Any, List, Callable, AsyncIterator
 
 import cv2
 import gi
@@ -14,6 +16,8 @@ from src.core.kinesis_video_manager import KinesisVideoClient
 from src.core.mqtt_manager import MqttManager
 from src.core.credential_provider import CredentialProvider
 from src.core.upload_manager import UploadManager
+from src.enums.detection_object import DetectionObjects
+from src.models.drone_coordinates import DroneCoordinates
 from src.models.job_document import Metadata
 from src.utils.gst_video_track import GstVideoTrack
 
@@ -36,6 +40,7 @@ class StreamHandler:
         kvs_client_factory: Callable[..., KinesisVideoClient],
         credential_provider: CredentialProvider,
         upload_manager: UploadManager,
+        coordinate_stream: Callable[[], AsyncIterator[DroneCoordinates]],
     ) -> None:
         Gst.init(None)
 
@@ -51,6 +56,8 @@ class StreamHandler:
         self._kvs_client_factory = kvs_client_factory
         self._credential_provider = credential_provider
         self._upload_manager = upload_manager
+
+        self.__coordinate_stream = coordinate_stream
 
         try:
             self._aws_region = self._channel_arn.split(":")[3]
@@ -205,7 +212,7 @@ class StreamHandler:
                 await asyncio.sleep(0)
                 continue
 
-            detection, _ = self._run_human_detection(self._frame)
+            detection, detected_object, confidence, _ = self._run_human_detection(self._frame)
             if detection:
                 self._consecutive_detection_frames += 1
                 if (
@@ -218,6 +225,8 @@ class StreamHandler:
                                 self._send_detection_alert,
                                 self._frame.copy(),
                                 self._current_mission_uuid,
+                                detected_object,
+                                confidence
                             )
                         )
                     self._consecutive_detection_frames = 0
@@ -227,25 +236,41 @@ class StreamHandler:
             self._last_process_time = current_time
             await asyncio.sleep(0)
 
-    def _run_human_detection(self, frame) -> Tuple[bool, Optional[List[Any]]]:
+    def _run_human_detection(self, frame) -> Tuple[bool, str, float, Optional[List[Any]]]:
         try:
             results = self._model(frame, verbose=False)
             for result in results:
                 for box in result.boxes:
                     cls = int(box.cls[0])
                     conf = float(box.conf[0])
-                    if cls == 0 and conf >= self._confidence_threshold:
-                        return True, results
+                    if cls in DetectionObjects.values() and conf >= self._confidence_threshold:
+                        return True, DetectionObjects.get_name(cls), conf, results
         except Exception as e:
             loguru.logger.error(f"Inference error: {e}")
 
-        return False, None
+        return False, "none", 0.0, None
 
-    def _send_detection_alert(self, frame: np.ndarray, mission_uuid: str):
+    async def _send_detection_alert(self, frame: np.ndarray, mission_uuid: str, detected_type: str, confidence: float) -> None:
         timestamp = int(time.time())
         file_name = f"{timestamp}_detection.jpg"
         s3_key = f"detections/{self._current_mission_metadata.outpost}/{self._current_mission_metadata.group}/mission/{mission_uuid}/{self._device_name}/{file_name}"
 
+        try:
+            coordinates = await self.__coordinate_stream().__anext__()
+            location = {"lat": coordinates.latitude_deg, "lng": coordinates.longitude_deg}
+        except StopAsyncIteration:
+            location = None
+
+        self._mqtt_manager.publish(
+            topic=f"detections/", message=json.dumps({
+                "mission_uuid": mission_uuid,
+                "detected_by_drone_uuid": self._device_name,
+                "object": detected_type,
+                "confidence": confidence,
+                "detected_at": datetime.now(UTC).isoformat(sep=' ', timespec='microseconds'),
+                "location": {"lat": location.latitude_deg, "lng": location.longitude_deg},
+                "image_key": s3_key
+            }))
         asyncio.create_task(self._async_upload(frame, s3_key))
 
     async def _async_upload(self, frame, s3_key):

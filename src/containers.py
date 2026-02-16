@@ -55,7 +55,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
 
     kvs_client_factory = providers.Factory(
         KinesisVideoClient,
-        channel_arn=config.provided.channel_arn,
+        thing_name=config.provided.thing_name,
     )
 
     credential_provider = providers.Singleton(
@@ -85,6 +85,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         kvs_client_factory=kvs_client_factory.provider,
         credential_provider=credential_provider,
         upload_manager=upload_manager,
+        coordinate_stream=drone.provided.coordinate_stream,
     )
 
     coordinator = providers.Singleton(

@@ -47,8 +47,6 @@ class Config:
         self.detection_confidence_threshold: int = self._require_int(
             raw, "DETECTION_CONFIDENCE_THRESHOLD"
         )
-        self.channel_arn: str = self._require(raw, "KVS_CHANNEL_ARN")
-
     def _require(self, config: dict | _Environ[str], key: str) -> str:
         value = config.get(key)
         if value is None:

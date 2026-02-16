@@ -28,14 +28,14 @@ class KinesisVideoClient:
     def __init__(
         self,
         region: str,
-        channel_arn: str,
         credentials: Optional[CredentialsModel],
         video_track: VideoStreamTrack,
+        thing_name: str,
     ):
         self.region = region
-        self.channel_arn = channel_arn
         self.credentials = credentials
         self.video_track = video_track
+        self.thing_name = thing_name
 
         self.kinesisvideo = None
         self.endpoints = None
@@ -59,6 +59,10 @@ class KinesisVideoClient:
                 aws_secret_access_key=self.credentials.secret_access_key,
                 aws_session_token=self.credentials.session_token,
             )
+            response = self.kinesisvideo.describe_signaling_channel(
+                ChannelName=self.thing_name
+            )
+            self.channel_arn = response['ChannelInfo']['ChannelARN']
         else:
             self.kinesisvideo = boto3.client("kinesisvideo", region_name=self.region)
 
