@@ -1,8 +1,5 @@
 default: run
 
-dep:
-    /bin/bash -c ./scripts/system_dependencies.sh
-
 model:
     #!/usr/bin/env bash
     if [ ! -f "./models/yolov8n.pt" ]; then
@@ -15,7 +12,7 @@ model:
 venv:
     #!/usr/bin/env bash
     if [ ! -d "./.venv" ]; then
-        uv venv
+        uv venv --python 3.13
     fi
     uv sync
 

@@ -10,11 +10,16 @@
         in {
             devShells.${system}.default = pkgs.mkShell {
                 packages = with pkgs; [
-		    just
-		    uv
-		    python313
-		    black
-		    just
+                    uv
+                    python313
+                    black
+                    just
+                    cairo
+                    glib
+                    gobject-introspection
+                    python3Packages.pygobject3
+                    pkg-config
+                    gcc
                 ];
             };
         };
