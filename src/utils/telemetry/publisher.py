@@ -3,10 +3,9 @@ import base64
 from typing import Optional
 
 import cbor2
-import loguru
 
 from src.core.mqtt_manager import MqttManager
-from src.telemetry.collector import TelemetryCollector
+from src.utils.telemetry.collector import TelemetryCollector
 
 
 class TelemetryPublisher:

@@ -5,8 +5,8 @@ from src.core.mqtt_manager import MqttManager
 from src.core.drone_controller import MavsdkController
 from src.core.state_machine import StateMachine
 from src.core.upload_manager import UploadManager
-from src.telemetry.collector import TelemetryCollector
-from src.telemetry.publisher import TelemetryPublisher
+from src.utils.telemetry.collector import TelemetryCollector
+from src.utils.telemetry.publisher import TelemetryPublisher
 from src.core.stream_handler import StreamHandler
 from src.coordinator import JobCoordinator
 from src.core.kinesis_video_manager import KinesisVideoClient

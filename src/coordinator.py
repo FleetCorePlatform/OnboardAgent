@@ -24,8 +24,8 @@ from src.exceptions.drone_excetions import (
 )
 from src.models.job_document import Job
 from src.exceptions.mqtt_exceptions import MqttConnectionException
-from src.telemetry.collector import TelemetryCollector
-from src.telemetry.publisher import TelemetryPublisher
+from src.utils.telemetry.collector import TelemetryCollector
+from src.utils.telemetry.publisher import TelemetryPublisher
 from src.utils.download_handler import handle_download
 from src.utils.zip_manager import extract_mission
 

@@ -1,9 +1,9 @@
 import pytest
 import asyncio
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, AsyncMock
 from mavsdk import System as MavSystem
 
-from src.telemetry.collector import TelemetryCollector
+from src.utils.telemetry.collector import TelemetryCollector
 from src.models.telemetry_data import TelemetryData
 
 
