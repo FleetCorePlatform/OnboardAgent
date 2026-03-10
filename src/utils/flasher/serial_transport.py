@@ -49,6 +49,7 @@ import serial
 from loguru import logger
 from src.exceptions.upload_exception import ConnectionError, TimeoutError
 
+
 class SerialTransport:
     """Handles serial port communication with proper resource management.
 

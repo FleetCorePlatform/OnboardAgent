@@ -66,7 +66,11 @@ class PortDetector:
             (0x2DAE, 0x1058, "Cube Orange"),
             (0x2DAE, 0x1016, "Cube Black"),
             (0x2DAE, 0x1011, "Cube Yellow"),
-            (0x0483, 0x5740, "STMicroelectronics Virtual COM Port"),  # Generic ST bootloader
+            (
+                0x0483,
+                0x5740,
+                "STMicroelectronics Virtual COM Port",
+            ),  # Generic ST bootloader
             (0x1209, 0x5740, "Generic STM32"),
             (0x1209, 0x5741, "ArduPilot"),
             (0x3185, 0x0039, "ARK FMU v6x"),

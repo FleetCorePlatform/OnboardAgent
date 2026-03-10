@@ -470,8 +470,7 @@ class BootloaderProtocol:
             f"Erase timed out after {self.erase_timeout}s, port={self.transport.port_name}, action=erase"
         )
 
-    def program(
-        self, firmware: Firmware) -> None:
+    def program(self, firmware: Firmware) -> None:
         """Program firmware to flash.
 
         Args:
@@ -527,8 +526,7 @@ class BootloaderProtocol:
             # Delay based on transmission time plus flash programming time
             time.sleep(length * self.transport.chartime + 0.001)
 
-    def verify_crc(
-        self, firmware: Firmware) -> None:
+    def verify_crc(self, firmware: Firmware) -> None:
         """Verify programmed firmware using CRC (v3+).
 
         Args:
@@ -568,8 +566,7 @@ class BootloaderProtocol:
 
         logger.debug("CRC verification passed")
 
-    def verify_read(
-        self, firmware: Firmware) -> None:
+    def verify_read(self, firmware: Firmware) -> None:
         """Verify programmed firmware by reading back (v2).
 
         Args:
@@ -614,8 +611,7 @@ class BootloaderProtocol:
 
         logger.debug("Read-back verification passed")
 
-    def verify(
-        self, firmware: Firmware) -> None:
+    def verify(self, firmware: Firmware) -> None:
         """Verify programmed firmware using appropriate method.
 
         Uses CRC for v3+ bootloaders, read-back for v2.

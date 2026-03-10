@@ -19,7 +19,3 @@ def extract_mission(zip_path: str, member_name: str, output_path: str) -> str | 
     except Exception as e:
         logger.error(e)
         return None
-
-
-# if __name__ == "__main__":
-#     extract_mission("/tmp/missions/mission.bundle.zip", "test1", "/tmp/missions/")

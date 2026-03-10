@@ -51,8 +51,13 @@ from pathlib import Path
 from typing import Optional
 from loguru import logger
 
-from src.exceptions.upload_exception import FirmwareError, BoardMismatchError, UploadError, ProtocolError, \
-    SiliconErrataError
+from src.exceptions.upload_exception import (
+    FirmwareError,
+    BoardMismatchError,
+    UploadError,
+    ProtocolError,
+    SiliconErrataError,
+)
 from src.utils.flasher.bootloader import BootloaderProtocol
 from src.utils.flasher.port_detector import PortDetector
 from src.utils.flasher.serial_transport import SerialTransport
@@ -60,20 +65,23 @@ from src.utils.flasher.firmware import Firmware
 
 
 class FirmwareFlasher:
-    def __init__(self,
-         port: Optional[str] = None,
-         baud_bootloader: int = 115200,
-         baud_flightstack: Optional[list[int]] = None,
-         force: bool = False,
-         force_erase: bool = False,
-         boot_delay: Optional[int] = None,
-         use_protocol_splitter: bool = False,
-         retry_count: int = 3,
-         windowed: bool = False
+    def __init__(
+        self,
+        port: Optional[str] = None,
+        baud_bootloader: int = 115200,
+        baud_flightstack: Optional[list[int]] = None,
+        force: bool = False,
+        force_erase: bool = False,
+        boot_delay: Optional[int] = None,
+        use_protocol_splitter: bool = False,
+        retry_count: int = 3,
+        windowed: bool = False,
     ):
         self._port = port
         self._baud_bootloader = baud_bootloader
-        self._baud_flightstack = baud_flightstack if baud_flightstack is not None else [57600]
+        self._baud_flightstack = (
+            baud_flightstack if baud_flightstack is not None else [57600]
+        )
         self._force = force
         self._force_erase = force_erase
         self._boot_delay = boot_delay
@@ -91,11 +99,12 @@ class FirmwareFlasher:
         self._port_detector = PortDetector()
 
     def flash_image(self, firmware_paths: list[Path]):
-        if (
-            sys.platform.startswith("linux")
-            and os.path.exists("/usr/sbin/ModemManager")
+        if sys.platform.startswith("linux") and os.path.exists(
+            "/usr/sbin/ModemManager"
         ):
-            logger.warning("ModemManager detected. It may interfere with PX4 devices. Consider: sudo systemctl disable ModemManager")
+            logger.warning(
+                "ModemManager detected. It may interfere with PX4 devices. Consider: sudo systemctl disable ModemManager"
+            )
 
         try:
             # Keep trying until we find a board or user interrupts
@@ -209,14 +218,18 @@ class FirmwareFlasher:
         # First try to identify without reboot
         try:
             protocol.identify()
-            logger.info(f"Found board {protocol.board_type},{protocol.board_rev} protocol v{protocol.bl_rev} on {transport.port_name}")
+            logger.info(
+                f"Found board {protocol.board_type},{protocol.board_rev} protocol v{protocol.bl_rev} on {transport.port_name}"
+            )
             return True
         except (ProtocolError, TimeoutError):
             pass
 
         # Try rebooting at each baud rate
         for baud in self._baud_flightstack:
-            logger.debug(f"Attempting reboot on {transport.port_name} at {baud} baud...")
+            logger.debug(
+                f"Attempting reboot on {transport.port_name} at {baud} baud..."
+            )
 
             try:
                 transport.set_baudrate(baud)
@@ -256,7 +269,9 @@ class FirmwareFlasher:
             for identify_attempt in range(5):
                 try:
                     protocol.identify()
-                    logger.info(f"Found board {protocol.board_type},{protocol.board_rev} protocol v{protocol.bl_rev} on {transport.port_name}")
+                    logger.info(
+                        f"Found board {protocol.board_type},{protocol.board_rev} protocol v{protocol.bl_rev} on {transport.port_name}"
+                    )
                     return True
                 except (ProtocolError, TimeoutError):
                     time.sleep(0.3)
@@ -338,7 +353,9 @@ class FirmwareFlasher:
             logger.debug(f"Family: {protocol.chip_family}")
         if protocol.chip_revision:
             logger.debug(f"Revision: {protocol.chip_revision}")
-        logger.debug(f"Flash: {protocol.fw_maxsize} bytes. Windowed mode: {'yes' if protocol.windowed_mode else 'no'}")
+        logger.debug(
+            f"Flash: {protocol.fw_maxsize} bytes. Windowed mode: {'yes' if protocol.windowed_mode else 'no'}"
+        )
 
     def _send_gcs_release(self) -> None:
         """Send UDP message to release serial port from GCS."""
