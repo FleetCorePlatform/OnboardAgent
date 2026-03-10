@@ -64,6 +64,7 @@ class JobCoordinator:
             drone=self.drone,
             try_take_control_cb=self._try_take_manual_control,
             release_control_cb=self._release_manual_control,
+            send_data_msg=self.streamer.send_data_message,
         )
         self.streamer.set_data_channel_callback(self._on_data_channel_message)
 

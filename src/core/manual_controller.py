@@ -1,5 +1,6 @@
 import asyncio
-from typing import Callable
+from asyncio import Task
+from typing import Callable, Optional
 from cbor2 import loads, dumps
 from loguru import logger
 
@@ -30,12 +31,16 @@ class ManualController:
         drone: MavsdkController,
         try_take_control_cb: Callable[[], bool],
         release_control_cb: Callable[[], None],
+        send_data_msg: Callable[[str], None],
     ):
         self._drone = drone
         self._try_take_control = try_take_control_cb
         self._release_control = release_control_cb
         self._active = False
         self._control_sequence_id = 0
+        self._send_data_msg = send_data_msg
+
+        self._telemetry_streamer_task = Optional[Task] | None
 
     async def handle_packet(self, packet_bytes: bytes) -> bytes | None:
         try:
@@ -56,6 +61,17 @@ class ManualController:
         except Exception as e:
             logger.error(f"Unhandled exception occurred: {e}")
         return None
+
+    async def send_telemetry(self):
+        data = await self._drone.get_telemetry()
+        # packet = TelemetryPacket(...) // TODO: Implement telemetry packet sending
+        self._send_data_msg(dumps(packet.model_dump(mode="json")))
+
+    async def start_telemetry_streaming(self):
+        while self._active:
+            asyncio.create_task(self.send_telemetry())
+            await asyncio.sleep(0.5)
+
 
     def parse_packet(self, packet: bytes):
         data = loads(packet)
@@ -142,6 +158,7 @@ class ManualController:
                 )
 
             self._active = True
+            self._telemetry_streamer_task = asyncio.create_task(self.start_telemetry_streaming())
             return HandshakeAckPacket(
                 type=PacketType.HANDSHAKE_ACK,
                 payload=AckPacketPayload(status=ManualControlAckStatus.ACCEPTED),
