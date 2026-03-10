@@ -1,7 +1,7 @@
 import asyncio
 import base64
 import json
-from typing import Optional
+from typing import Optional, Callable
 
 import boto3
 import loguru
@@ -28,14 +28,15 @@ class KinesisVideoClient:
     def __init__(
         self,
         region: str,
+        channel_name: str,
         credentials: Optional[CredentialsModel],
         video_track: VideoStreamTrack,
-        thing_name: str,
+        data_channel_callback: Callable,
     ):
         self.region = region
         self.credentials = credentials
         self.video_track = video_track
-        self.thing_name = thing_name
+        self.channel_name = channel_name
 
         self.kinesisvideo = None
         self.endpoints = None
@@ -45,26 +46,42 @@ class KinesisVideoClient:
         self.PCMap = {}
         self.DCMap = {}
 
+        self.pending_tasks = set()
+
         self.relay = MediaRelay()
+
+        self.data_channel_callback = data_channel_callback
 
         self._running = False
         self._init_client()
 
+    def _track_task(self, task):
+        self.pending_tasks.add(task)
+        task.add_done_callback(self.pending_tasks.discard)
+
+    def send_data_message(self, message: bytes):
+        for channel in self.DCMap.values():
+            if channel.readyState == "open":
+                channel.send(message)
+
     def _init_client(self):
+        client_kwargs = {"region_name": self.region}
+
         if self.credentials:
-            self.kinesisvideo = boto3.client(
-                "kinesisvideo",
-                region_name=self.region,
-                aws_access_key_id=self.credentials.access_key_id,
-                aws_secret_access_key=self.credentials.secret_access_key,
-                aws_session_token=self.credentials.session_token,
+            client_kwargs.update(
+                {
+                    "aws_access_key_id": self.credentials.access_key_id,
+                    "aws_secret_access_key": self.credentials.secret_access_key,
+                    "aws_session_token": self.credentials.session_token,
+                }
             )
-            response = self.kinesisvideo.describe_signaling_channel(
-                ChannelName=self.thing_name
-            )
-            self.channel_arn = response['ChannelInfo']['ChannelARN']
-        else:
-            self.kinesisvideo = boto3.client("kinesisvideo", region_name=self.region)
+
+        self.kinesisvideo = boto3.client("kinesisvideo", **client_kwargs)
+
+        response = self.kinesisvideo.describe_signaling_channel(
+            ChannelName=self.channel_name
+        )
+        self.channel_arn = response["ChannelInfo"]["ChannelARN"]
 
     def get_signaling_channel_endpoint(self):
         if self.endpoints is None:
@@ -149,7 +166,7 @@ class KinesisVideoClient:
         aws_request = AWSRequest(
             method="GET",
             url=self.endpoint_wss,
-            params={"X-Amz-ChannelARN": self.channel_arn, "X-Amz-ClientId": "MASTER"},
+            params={"X-Amz-ChannelARN": self.channel_arn},
         )
         SigV4.add_auth(aws_request)
         return aws_request.prepare().url
@@ -191,35 +208,46 @@ class KinesisVideoClient:
         configuration = RTCConfiguration(iceServers=iceServers)
         pc = RTCPeerConnection(configuration=configuration)
 
-        self.DCMap[client_id] = pc.createDataChannel("kvsDataChannel")
         self.PCMap[client_id] = pc
 
         @pc.on("connectionstatechange")
         async def on_connectionstatechange():
             loguru.logger.info(f"[{client_id}] connectionState: {pc.connectionState}")
             if pc.connectionState in ["failed", "closed"]:
-                await pc.close()
-                if client_id in self.PCMap:
-                    del self.PCMap[client_id]
+                self.PCMap.pop(client_id, None)
+                self.DCMap.pop(client_id, None)
 
         @pc.on("track")
         def on_track(track):
             MediaBlackhole().addTrack(track)
 
+        @pc.on("datachannel")
+        def on_datachannel(channel):
+            loguru.logger.info(
+                f"[{client_id}] Data channel established: {channel.label}"
+            )
+            self.DCMap[client_id] = channel
+
+            @channel.on("message")
+            def on_message(message):
+                self.data_channel_callback(message)
+
         await pc.setRemoteDescription(
             RTCSessionDescription(sdp=payload["sdp"], type=payload["type"])
         )
 
-        video_transceiver_exists = any(t.kind == "video" for t in pc.getTransceivers())
-        if video_transceiver_exists:
-            pc.addTrack(self.relay.subscribe(self.video_track))
+        loguru.logger.debug(f"Adding video track to peer connection for {client_id}")
+        pc.addTrack(self.relay.subscribe(self.video_track))
 
+        loguru.logger.debug(f"[{client_id}] Creating SDP answer...")
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
 
+        loguru.logger.debug(f"[{client_id}] Sending SDP answer via WebSocket...")
         await websocket.send(
             self._encode_msg("SDP_ANSWER", pc.localDescription, client_id)
         )
+        loguru.logger.info(f"[{client_id}] SDP Answer sent successfully.")
 
     async def _handle_ice_candidate(self, payload, client_id):
         if client_id in self.PCMap:
@@ -230,34 +258,86 @@ class KinesisVideoClient:
 
     async def run(self):
         self._running = True
-        while self._running:
-            try:
-                self.get_signaling_channel_endpoint()
-                wss_url = self._create_wss_url()
-                loguru.logger.info(f"Connecting to Signaling: {self.channel_arn}")
+        try:
+            while self._running:
+                try:
+                    self.get_signaling_channel_endpoint()
+                    wss_url = self._create_wss_url()
+                    loguru.logger.info(f"Connecting to Signaling: {self.channel_arn}")
 
-                async with websockets.connect(wss_url) as websocket:
-                    loguru.logger.info("Signaling Connected!")
-                    async for message in websocket:
-                        if not self._running:
-                            break
-                        msg_type, payload, client_id = self._decode_msg(message)
+                    async with websockets.connect(wss_url) as websocket:
+                        loguru.logger.info("Signaling Connected!")
+                        async for message in websocket:
+                            if not self._running:
+                                break
 
-                        if msg_type == "SDP_OFFER":
-                            asyncio.create_task(
-                                self._handle_sdp_offer(payload, client_id, websocket)
+                            loguru.logger.trace(
+                                f"Raw signaling message received: {message[:200]}..."
                             )
-                        elif msg_type == "ICE_CANDIDATE":
-                            asyncio.create_task(
-                                self._handle_ice_candidate(payload, client_id)
+                            msg_type, payload, client_id = self._decode_msg(message)
+                            loguru.logger.trace(
+                                f"Decoded Signaling Message: {msg_type} from {client_id}"
                             )
 
-            except Exception as e:
-                loguru.logger.error(f"Signaling error: {e}. Retrying in 5s...")
-                await asyncio.sleep(5)
+                            if msg_type == "SDP_OFFER":
+                                loguru.logger.info(
+                                    f"Handling SDP Offer from {client_id}"
+                                )
+                                task = asyncio.create_task(
+                                    self._handle_sdp_offer(
+                                        payload, client_id, websocket
+                                    )
+                                )
+                                self._track_task(task)
+                            elif msg_type == "ICE_CANDIDATE":
+                                loguru.logger.trace(
+                                    f"Handling ICE Candidate from {client_id}"
+                                )
+                                task = asyncio.create_task(
+                                    self._handle_ice_candidate(payload, client_id)
+                                )
+                                self._track_task(task)
+
+                except Exception as e:
+                    loguru.logger.error(f"Signaling error: {e}. Retrying in 5s...")
+                    if self._running:
+                        await asyncio.sleep(5)
+        finally:
+            await self.stop()
 
     async def stop(self):
         self._running = False
+
         for pc in list(self.PCMap.values()):
-            await pc.close()
+            self._track_task(asyncio.create_task(pc.close()))
+
         self.PCMap.clear()
+        self.DCMap.clear()
+
+        if self.pending_tasks:
+            loguru.logger.debug(
+                f"Waiting for {len(self.pending_tasks)} pending tasks..."
+            )
+            try:
+                results = await asyncio.shield(
+                    asyncio.wait_for(
+                        asyncio.gather(*self.pending_tasks, return_exceptions=True),
+                        timeout=5.0,
+                    )
+                )
+                for i, result in enumerate(results):
+                    if isinstance(result, Exception):
+                        loguru.logger.error(f"Task {i} failed: {result}")
+            except asyncio.TimeoutError:
+                loguru.logger.warning(
+                    "Timeout waiting for pending tasks, cancelling..."
+                )
+                for task in list(self.pending_tasks):
+                    task.cancel()
+            except asyncio.CancelledError:
+                loguru.logger.debug(
+                    "stop() was cancelled, tasks will continue in background"
+                )
+                raise
+
+        loguru.logger.info("Stop complete")
