@@ -13,6 +13,7 @@ from src.exceptions.config_exceptions import ConfigException
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
+
 def main(config_path: Optional[str] = None):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
