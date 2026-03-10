@@ -6,6 +6,7 @@ class Metadata(BaseModel):
     group: str
     bucket: str
 
+
 class Data(BaseModel):
     mission_uuid: str = Field(..., alias="mission_uuid")
     download_url: str
@@ -14,6 +15,7 @@ class Data(BaseModel):
 
     class Config:
         populate_by_name = True
+
 
 class Job(BaseModel):
     operation: str

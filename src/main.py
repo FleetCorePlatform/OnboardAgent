@@ -4,14 +4,19 @@ import sys
 from typing import Optional
 
 from loguru import logger
+import warnings
+
+from src.exceptions.aioice_exception_patch import global_exception_handler
 
 from src.containers import ApplicationContainer
 from src.exceptions.config_exceptions import ConfigException
 
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 def main(config_path: Optional[str] = None):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    loop.set_exception_handler(global_exception_handler)
 
     container = ApplicationContainer(
         event_loop=loop,
@@ -37,11 +42,10 @@ def main(config_path: Optional[str] = None):
         loop.run_forever()
     except KeyboardInterrupt:
         logger.info("Shutdown requested")
-    except Exception as e:
-        logger.error(f"Fatal error: {e}")
+    except Exception:
+        logger.exception("Fatal error occurred during execution")
         sys.exit(1)
     finally:
-        # Graceful shutdown
         if "stream_handler" in locals():
             loop.run_until_complete(stream_handler.stop())
 

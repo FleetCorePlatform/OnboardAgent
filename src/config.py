@@ -17,7 +17,9 @@ class Config:
 
         self.verbose: Optional[bool] = raw.get("VERBOSE", False)
         self.role_alias: str = self._require(raw, "ROLE_ALIAS")
+        self.kinesis_region: str = self._require(raw, "KINESIS_REGION")
         self.endpoint: str = self._require(raw, "IOT_ENDPOINT")
+        self.credentials_endpoint: Optional[str] = raw.get("IOT_CREDENTIALS_ENDPOINT")
         self.thing_name: str = self._require(raw, "IOT_THING_NAME")
         self.drone_address: str = self._require(raw, "DRONE_ADDRESS")
         self.drone_port: int = self._require_int(raw, "DRONE_PORT")
@@ -47,6 +49,7 @@ class Config:
         self.detection_confidence_threshold: int = self._require_int(
             raw, "DETECTION_CONFIDENCE_THRESHOLD"
         )
+
     def _require(self, config: dict | _Environ[str], key: str) -> str:
         value = config.get(key)
         if value is None:

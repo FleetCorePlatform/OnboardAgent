@@ -55,7 +55,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
 
     kvs_client_factory = providers.Factory(
         KinesisVideoClient,
-        thing_name=config.provided.thing_name,
+        channel_name=config.provided.thing_name,
+        region=config.provided.kinesis_region,
     )
 
     credential_provider = providers.Singleton(
@@ -65,6 +66,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
         ca_path=config.provided.ca_filepath,
         role_alias=config.provided.role_alias,
         thing_name=config.provided.thing_name,
+        endpoint=config.provided.endpoint,
+        credentials_endpoint=config.provided.credentials_endpoint,
     )
 
     upload_manager = providers.Singleton(
@@ -81,7 +84,6 @@ class ApplicationContainer(containers.DeclarativeContainer):
         alert_topic=config.provided.alert_topic,
         presence_confirmation_frames=config.provided.presence_confirmation_frames,
         confidence_threshold=config.provided.detection_confidence_threshold,
-        channel_arn=config.provided.channel_arn,
         kvs_client_factory=kvs_client_factory.provider,
         credential_provider=credential_provider,
         upload_manager=upload_manager,
