@@ -50,7 +50,6 @@ RUN pip install kconfiglib jinja2 empy jsonschema pyros-genmsg packaging toml nu
 
 WORKDIR /home/sim/PX4-Autopilot/
 RUN git submodule update --init --recursive
-RUN make px4_sitl_default
+RUN DONT_RUN=1 HEADLESS=1 make px4_sitl gazebo-classic_typhoon_h480
 
-#ENTRYPOINT ["make"]
 CMD ["make", "px4_sitl", "gazebo-classic_typhoon_h480"]

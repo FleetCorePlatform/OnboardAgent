@@ -9,19 +9,24 @@ setup() {
 run() {
   xhost +local:docker
 
-	docker run --rm -it --privileged \
-	  --env=PX4_GZ_WORLD="default" \
+  HOST_VIDEO_GID=$(getent group video | cut -d: -f3)
+  HOST_RENDER_GID=$(getent group render | cut -d: -f3)
+
+  docker run --rm -it --privileged \
     --env=LOCAL_USER_ID="1002" \
-		-v "/tmp/.X11-unix:/tmp/.X11-unix:ro" \
-		-v "$(pwd)/sim/gazebo/worlds:/home/sim/PX4-Autopilot/Tools/simulation/gz/worlds" \
-		-e DISPLAY="$DISPLAY" \
-		-e NVIDIA_VISIBLE_DEVICES=all \
-    -e NVIDIA_DRIVER_CAPABILITIES=all \
-    --device=/dev/dri:/dev/dri \
+    -v "/tmp/.X11-unix:/tmp/.X11-unix:ro" \
+    -v "/run/user/$(id -u):/run/user/$(id -u):ro" \
+    --group-add ${HOST_VIDEO_GID} \
+    --group-add ${HOST_RENDER_GID} \
     --gpus all \
-		--network host \
-		--name="$CONTAINER_NAME" \
-		fleetcoreagent/px4-dev-gazebo-jammy:latest
+    -e DISPLAY=$DISPLAY \
+    -e XDG_RUNTIME_DIR="/run/user/$(id -u)" \
+    -e NVIDIA_VISIBLE_DEVICES=all \
+    -e NVIDIA_DRIVER_CAPABILITIES=all \
+    --network host \
+    --device=/dev/dri:/dev/dri \
+    --name=$CONTAINER_NAME \
+    fleetcoreagent/px4-dev-gazebo-jammy:latest
 }
 
 if ! command -v nvidia-smi; then
