@@ -2,9 +2,7 @@ from typing import AsyncIterator
 
 from mavsdk import System as MavSystem
 from mavsdk.action import ActionError
-from mavsdk.core import ConnectionState
 from mavsdk.telemetry import TelemetryError
-from mypy.types import AnyType
 
 from src.exceptions.drone_excetions import *
 from src.models.drone_coordinates import DroneCoordinates
@@ -109,3 +107,17 @@ class MavsdkController:
         except TelemetryError as e:
             raise DroneStreamCoordinatesException(e)
 
+    async def check_system_health(self) -> bool:
+        async for health in self.system.telemetry.health():
+            if (
+                health.is_global_position_ok
+                and health.is_home_position_ok
+                and health.is_local_position_ok
+                and health.is_gyrometer_calibration_ok
+                and health.is_accelerometer_calibration_ok
+                and health.is_magnetometer_calibration_ok
+            ):
+                return True
+            else:
+                return False
+        return False
