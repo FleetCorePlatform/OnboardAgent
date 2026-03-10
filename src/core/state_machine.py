@@ -12,6 +12,8 @@ class StateMachine:
                 "download": State.DOWNLOADING,
                 "reject": State.REJECTED,
                 "error": State.ERROR,
+                "manual": State.MANUAL,
+                "flashing": State.FLASHING,
             },
             State.DOWNLOADING: {
                 "upload": State.UPLOADING,
@@ -27,16 +29,20 @@ class StateMachine:
                 "fly": State.IN_FLIGHT,
                 "cancel": State.CANCELLING,
                 "error": State.ERROR,
+                "manual": State.MANUAL,
             },
             State.IN_FLIGHT: {
                 "complete": State.COMPLETING,
                 "emergency": State.CANCELLING,
                 "error": State.ERROR,
+                "manual": State.MANUAL,
             },
             State.COMPLETING: {"idle": State.IDLE, "error": State.ERROR},
             State.CANCELLING: {"idle": State.IDLE, "error": State.ERROR},
             State.ERROR: {"reset": State.IDLE},
             State.REJECTED: {"idle": State.IDLE},
+            State.MANUAL: {"idle": State.IDLE, "error": State.ERROR},
+            State.FLASHING: {"idle": State.IDLE, "error": State.ERROR},
         }
 
     def trigger(self, event: str) -> bool:

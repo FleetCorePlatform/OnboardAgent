@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from typing import Optional
 
 from loguru import logger
@@ -9,6 +10,7 @@ from src.core.drone_controller import MavsdkController
 from src.core.mqtt_manager import MqttManager
 from src.core.state_machine import StateMachine
 from src.core.stream_handler import StreamHandler
+from src.core.manual_controller import ManualController
 from src.enums.execution_state import ExecutionState
 from src.enums.job_status import JobStatus
 from src.exceptions.download_exceptions import (
@@ -56,6 +58,41 @@ class JobCoordinator:
         self.current_task: Optional[asyncio.Task] = None
         self.mission_file: Optional[str] = None
 
+        self._processing = True
+
+        self.manual_controller = ManualController(
+            drone=self.drone,
+            try_take_control_cb=self._try_take_manual_control,
+            release_control_cb=self._release_manual_control,
+        )
+        self.streamer.set_data_channel_callback(self._on_data_channel_message)
+
+        self._last_streaming_command = (None, 0.0)
+        self._streaming_command_dedup_window = 0.1
+
+    def _try_take_manual_control(self) -> bool:
+        try:
+            return self.state.trigger("manual")
+        except Exception as e:
+            logger.warning(f"Manual control transition denied: {e}")
+            return False
+
+    def _release_manual_control(self) -> None:
+        try:
+            self.state.trigger("idle")
+        except Exception as e:
+            logger.warning(f"Failed to return to idle from manual control: {e}")
+
+    def _on_data_channel_message(self, message: bytes):
+        asyncio.run_coroutine_threadsafe(
+            self._process_data_channel_message(message), self.loop
+        )
+
+    async def _process_data_channel_message(self, message: bytes):
+        response = await self.manual_controller.handle_packet(message)
+        if response:
+            self.streamer.send_data_message(response)
+
     async def start(self):
         try:
             await self.mqtt.connect()
@@ -64,10 +101,30 @@ class JobCoordinator:
             logger.error(e)
             raise
 
-        self.mqtt.subscribe(self.config.internal_topic, self._job_notification_handler)
-        self.mqtt.subscribe(
-            self.config.streaming_topic, self._streaming_command_handler
-        )
+        try:
+            logger.debug(f"Subscribing to {self.config.internal_topic}")
+            await self.mqtt.subscribe(
+                self.config.internal_topic, self._job_notification_handler
+            )
+        except Exception as e:
+            logger.error(
+                f"Critical subscription failed for {self.config.internal_topic}: {e}"
+            )
+
+        try:
+            logger.debug(f"Subscribing to {self.config.streaming_topic}")
+            await self.mqtt.subscribe(
+                self.config.streaming_topic, self._streaming_command_handler
+            )
+        except Exception as e:
+            logger.error(f"Subscription failed for {self.config.streaming_topic}: {e}")
+
+        logger.info("Startup sequence complete, coordinator running.")
+
+        try:
+            await self.drone.connect()
+        except DroneConnectException as e:
+            raise Exception(f"Mavsdk system connection failed: {e}")
 
         asyncio.run_coroutine_threadsafe(self._process_next_job(), self.loop)
 
@@ -79,13 +136,12 @@ class JobCoordinator:
         asyncio.run_coroutine_threadsafe(self._evaluate_incoming_job(), self.loop)
 
     async def _evaluate_incoming_job(self):
-        """Peeks at the next queued job to decide if it's a high-priority CANCEL command."""
         try:
-            next_job_summary = self.mqtt.get_next_queued_job()
+            next_job_summary = await self.mqtt.get_next_queued_job()
             if not next_job_summary:
                 return
 
-            job_desc = self.mqtt.describe_job(next_job_summary.job_id)
+            job_desc = await self.mqtt.describe_job(next_job_summary.job_id)
             document = self.mqtt.get_job_document(job_desc)
 
             if not document:
@@ -113,18 +169,29 @@ class JobCoordinator:
             logger.error(f"Failed to evaluate incoming job: {e}")
 
     def _streaming_command_handler(self, topic, payload, **kwargs):
-        """
-        Supports payloads: "true", "false", "on", "off", or JSON {"enabled": true}
-        """
         try:
-            payload_str = (
-                payload.decode("utf-8") if isinstance(payload, bytes) else str(payload)
-            )
-            should_stream = False
+            if hasattr(payload, "tobytes"):
+                payload_str = payload.tobytes().decode("utf-8")
+            elif isinstance(payload, (bytes, bytearray)):
+                payload_str = payload.decode("utf-8")
+            else:
+                payload_str = str(payload)
 
-            if payload_str.strip().startswith("{"):
+            payload_str = payload_str.strip()
+            logger.debug(f"Raw streaming payload: '{payload_str}'")
+
+            should_stream = False
+            if payload_str.startswith("{"):
                 try:
                     data = json.loads(payload_str)
+
+                    if "message" in data:
+                        msg_val = data["message"]
+                        if isinstance(msg_val, str) and msg_val.strip().startswith("{"):
+                            data = json.loads(msg_val)
+                        elif isinstance(msg_val, dict):
+                            data = msg_val
+
                     should_stream = bool(data.get("enabled", False))
                 except json.JSONDecodeError:
                     logger.warning(f"Invalid JSON in streaming command: {payload_str}")
@@ -133,8 +200,23 @@ class JobCoordinator:
                 should_stream = payload_str.lower() in ["true", "1", "on", "enable"]
 
             logger.info(
-                f"Received streaming command. Setting state to: {should_stream}"
+                f"Processed streaming command. Setting state to: {should_stream}"
             )
+
+            current_time = time.time()
+            last_enabled, last_time = self._last_streaming_command
+
+            if (
+                last_enabled == should_stream
+                and (current_time - last_time) < self._streaming_command_dedup_window
+            ):
+                logger.debug(
+                    f"Ignoring duplicate streaming command: enabled={should_stream} "
+                    f"(last command {(current_time - last_time) * 1000:.1f}ms ago)"
+                )
+                return
+
+            self._last_streaming_command = (should_stream, current_time)
 
             asyncio.run_coroutine_threadsafe(
                 self.streamer.set_streaming_state(should_stream), self.loop
@@ -157,22 +239,24 @@ class JobCoordinator:
         await self._trigger_drone_abort()
 
         if self.current_job_id:
-            self.mqtt.update_job_status(self.current_job_id, JobStatus.CANCELED)
+            await self.mqtt.update_job_status(self.current_job_id, JobStatus.CANCELED)
 
-        self.mqtt.update_job_status(cancel_job_id, JobStatus.SUCCEEDED)
+        await self.mqtt.update_job_status(cancel_job_id, JobStatus.SUCCEEDED)
 
         self.state.force_reset()
         self.current_job_id = None
         self.current_task = None
 
     async def _process_next_job(self):
-        """Fetch and process next queued job."""
+        if not self._processing:
+            return
+
         if self.current_task and not self.current_task.done():
             logger.debug("Job already in progress, skipping..")
             return
 
         try:
-            next_job = self.mqtt.get_next_queued_job()
+            next_job = await self.mqtt.get_next_queued_job()
             if not next_job:
                 logger.debug("No next job, skipping..")
                 return
@@ -193,12 +277,12 @@ class JobCoordinator:
         """Execute a job from start to finish."""
         self.current_job_id = job_id
 
-        job_response = self.mqtt.describe_job(job_id)
+        job_response = await self.mqtt.describe_job(job_id)
         document = self.mqtt.get_job_document(job_response)
 
         if not document:
             logger.warning(f"Invalid job document for {job_id}")
-            self.mqtt.update_job_status(job_id, JobStatus.REJECTED)
+            await self.mqtt.update_job_status(job_id, JobStatus.REJECTED)
             return
 
         self.job_document = document
@@ -208,26 +292,26 @@ class JobCoordinator:
                 await self._execute_download_job(job_id)
             case "CANCEL":
                 logger.info("Processed Cancel job while IDLE.")
-                self.mqtt.update_job_status(job_id, JobStatus.SUCCEEDED)
+                await self.mqtt.update_job_status(job_id, JobStatus.SUCCEEDED)
             case _:
                 logger.warning(f"Unsupported action: {document.operation}")
-                self.mqtt.update_job_status(job_id, JobStatus.REJECTED)
+                await self.mqtt.update_job_status(job_id, JobStatus.REJECTED)
                 return
 
     async def _execute_download_job(self, job_id: str):
-        self.mqtt.update_job_status(job_id, JobStatus.IN_PROGRESS)
+        await self.mqtt.update_job_status(job_id, JobStatus.IN_PROGRESS)
 
         try:
             await self._download_mission(self.job_document)
             await self._execute_mission()
-            self.mqtt.update_job_status(job_id, JobStatus.SUCCEEDED)
+            await self.mqtt.update_job_status(job_id, JobStatus.SUCCEEDED)
             logger.info(f"Job {job_id} completed successfully")
 
         except asyncio.CancelledError:
             raise
         except Exception as e:
             logger.error(f"Job {job_id} failed: {e}")
-            self.mqtt.update_job_status(job_id, JobStatus.FAILED)
+            await self.mqtt.update_job_status(job_id, JobStatus.FAILED)
             self.state.trigger("error")
         finally:
             self.current_job_id = None
@@ -237,8 +321,8 @@ class JobCoordinator:
 
     async def _download_mission(self, document: Job):
         self.state.trigger("download")
-        url = document.download_url
-        download_path = document.download_path
+        url = document.data.download_url
+        download_path = document.data.download_path
 
         logger.info(f"Downloading mission from {url}")
         try:
@@ -256,11 +340,6 @@ class JobCoordinator:
     async def _execute_mission(self):
         if not self.mission_file:
             raise Exception("No mission file available")
-
-        try:
-            await self.drone.connect()
-        except DroneConnectException as e:
-            raise Exception(f"Mavsdk system connection failed: {e}")
 
         self.state.trigger("upload")
         try:
@@ -280,9 +359,10 @@ class JobCoordinator:
         except DroneStartMissionException as e:
             raise Exception(f"Mission start failed: {e}")
 
-        mission_uuid = self.job_document.mission_uuid
-        mission_metadata = self.job_document.mission_metadata
-        self.streamer.set_active_mission_info(mission_uuid, mission_metadata)
+        if self.job_document and self.job_document.data:
+            mission_uuid = self.job_document.data.mission_uuid
+            mission_metadata = self.job_document.data.metadata
+            self.streamer.set_active_mission_info(mission_uuid, mission_metadata)
 
         logger.debug(f"Starting detection, and telemetry systems..")
         await asyncio.gather(
@@ -331,9 +411,44 @@ class JobCoordinator:
 
     async def stop(self):
         logger.info("Shutting down coordinator")
-        if self.current_task:
+
+        self._processing = False
+
+        if self.current_task and not self.current_task.done():
             self.current_task.cancel()
-        await self.mqtt.disconnect()
+            try:
+                await asyncio.wait_for(self.current_task, timeout=3.0)
+            except asyncio.TimeoutError:
+                logger.error("Job execution task didn't stop within timeout")
+            except asyncio.CancelledError:
+                logger.info("Job execution task cancelled")
+
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    self.streamer.stop(),
+                    self.telemetry_publisher.stop(),
+                    self.telemetry_collector.stop(),
+                    return_exceptions=True,
+                ),
+                timeout=5.0,
+            )
+        except asyncio.TimeoutError:
+            logger.error("Telemetry/streaming shutdown timeout")
+
         if self.state.get_state() == ExecutionState.IN_FLIGHT:
-            await self.drone.cancel_mission()
+            try:
+                await asyncio.wait_for(self.drone.cancel_mission(), timeout=2.0)
+            except asyncio.TimeoutError:
+                logger.error("Drone cancel timeout")
+            except Exception as e:
+                logger.error(f"Failed to cancel drone mission: {e}")
+
+        try:
+            await asyncio.wait_for(self.mqtt.disconnect(), timeout=2.0)
+        except asyncio.TimeoutError:
+            logger.error("MQTT disconnect timeout")
+        except Exception as e:
+            logger.error(f"MQTT disconnect error: {e}")
+
         logger.info("Coordinator stopped")

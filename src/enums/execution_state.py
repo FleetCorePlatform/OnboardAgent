@@ -11,3 +11,5 @@ class ExecutionState(Enum):
     ERROR = (6,)
     CANCELLING = (7,)
     REJECTED = (8,)
+    MANUAL = (9,)
+    FLASHING = (10,)
