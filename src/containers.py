@@ -41,7 +41,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
     telemetry_collector = providers.Singleton(
         TelemetryCollector,
         device_name=config.provided.thing_name,
-        drone=drone.provided.system,
+        drone=drone.provided,
         interval_hz=config.provided.telemetry_sample_interval,
     )
 

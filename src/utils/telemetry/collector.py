@@ -3,14 +3,14 @@ from datetime import datetime
 from math import sqrt
 from typing import Optional
 
-import loguru
-from mavsdk import System as MavSystem
-
+from src.core.drone_controller import MavsdkController
 from src.models.telemetry_data import TelemetryData, Position, Battery, Health, Velocity
 
 
 class TelemetryCollector:
-    def __init__(self, device_name: str, drone: MavSystem, interval_hz: float) -> None:
+    def __init__(
+        self, device_name: str, drone: MavsdkController, interval_hz: float
+    ) -> None:
         self.device_name = device_name
         self.drone = drone
         self.interval = 1.0 / interval_hz
@@ -48,13 +48,7 @@ class TelemetryCollector:
     async def _sample_telemetry(self) -> TelemetryData:
         """Sample telemetry at fixed rate."""
         position_raw, battery_raw, health_raw, velocity_raw, heading_raw = (
-            await asyncio.gather(
-                self.drone.telemetry.position().__anext__(),
-                self.drone.telemetry.battery().__anext__(),
-                self.drone.telemetry.health().__anext__(),
-                self.drone.telemetry.velocity_ned().__anext__(),
-                self.drone.telemetry.heading().__anext__(),
-            )
+            self.drone.gather_telemetry()
         )
 
         ground_speed: float = sqrt(velocity_raw.east_m_s**2 + velocity_raw.north_m_s**2)

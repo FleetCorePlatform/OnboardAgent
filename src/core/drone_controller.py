@@ -1,14 +1,19 @@
-from typing import AsyncIterator
+import asyncio
+from datetime import datetime
+from typing import AsyncIterator, Tuple
+from xmlrpc.client import DateTime
 
 from mavsdk import System as MavSystem
 from mavsdk.action import ActionError
-from mavsdk.telemetry import TelemetryError
+from mavsdk.telemetry import TelemetryError, Position, Battery, Health, Heading
+from mavsdk.telemetry_server import VelocityNed
 
 from src.exceptions.drone_excetions import *
 from src.models.drone_coordinates import DroneCoordinates
 from src.models.mission_progress import MissionProgressData
 
 from src.enums.connection_types import ConnectionTypes
+from src.utils.lte_util import get_signal_strength
 
 
 class MavsdkController:
@@ -18,6 +23,7 @@ class MavsdkController:
         self.port: int = port
         self.protocol: str = protocol.value
         self.system: MavSystem = MavSystem()
+        self.uptime_epoch = datetime.now()
 
     async def connect(self) -> None:
         """Connect to drone hardware."""
@@ -121,3 +127,35 @@ class MavsdkController:
             else:
                 return False
         return False
+
+    async def gather_telemetry(
+        self,
+    ) -> Tuple[Position, Battery, Health, VelocityNed, Heading, int, int]:
+        (
+            position_raw,
+            battery_raw,
+            health_raw,
+            velocity_raw,
+            heading_raw,
+            signal_strength_raw,
+        ) = await asyncio.gather(
+            self.system.telemetry.position().__anext__(),
+            self.system.telemetry.battery().__anext__(),
+            self.system.telemetry.health().__anext__(),
+            self.system.telemetry.velocity_ned().__anext__(),
+            self.system.telemetry.heading().__anext__(),
+            get_signal_strength().__anext__(),
+        )
+
+        uptime = datetime.now() - self.uptime_epoch
+        seconds = int(uptime.total_seconds())
+
+        return (
+            position_raw,
+            battery_raw,
+            health_raw,
+            velocity_raw,
+            heading_raw,
+            signal_strength_raw,
+            seconds,
+        )
