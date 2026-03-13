@@ -67,9 +67,17 @@ class JobCoordinator:
             send_data_msg=self.streamer.send_data_message,
         )
         self.streamer.set_data_channel_callback(self._on_data_channel_message)
+        self.streamer.set_data_channel_open_callback(self._on_data_channel_open)
+        self.streamer.set_data_channel_close_callback(self._on_data_channel_close)
 
         self._last_streaming_command = (None, 0.0)
         self._streaming_command_dedup_window = 0.1
+
+    def _on_data_channel_open(self):
+        self.manual_controller.on_datachannel_open()
+
+    def _on_data_channel_close(self):
+        self.manual_controller.on_datachannel_close()
 
     def _try_take_manual_control(self) -> bool:
         try:

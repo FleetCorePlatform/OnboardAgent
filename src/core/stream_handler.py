@@ -54,6 +54,8 @@ class StreamHandler:
         self._credential_provider = credential_provider
         self._upload_manager = upload_manager
         self._data_channel_callback = None
+        self._data_channel_open_callback = None
+        self._data_channel_close_callback = None
 
         self.__coordinate_stream = coordinate_stream
 
@@ -82,6 +84,12 @@ class StreamHandler:
 
     def set_data_channel_callback(self, cb: Callable):
         self._data_channel_callback = cb
+
+    def set_data_channel_open_callback(self, cb: Callable):
+        self._data_channel_open_callback = cb
+
+    def set_data_channel_close_callback(self, cb: Callable):
+        self._data_channel_close_callback = cb
 
     def send_data_message(self, message: bytes):
         if self._kvs_client:
@@ -204,6 +212,8 @@ class StreamHandler:
                 credentials=creds,
                 video_track=self._gst_track,
                 data_channel_callback=self._data_channel_callback,
+                data_channel_open_callback=self._data_channel_open_callback,
+                data_channel_close_callback=self._data_channel_close_callback,
             )
         except Exception as e:
             logger.error(

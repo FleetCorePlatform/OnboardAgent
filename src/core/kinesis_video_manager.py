@@ -32,6 +32,8 @@ class KinesisVideoClient:
         credentials: Optional[CredentialsModel],
         video_track: VideoStreamTrack,
         data_channel_callback: Callable,
+        data_channel_open_callback: Optional[Callable] = None,
+        data_channel_close_callback: Optional[Callable] = None,
     ):
         self.region = region
         self.credentials = credentials
@@ -51,6 +53,8 @@ class KinesisVideoClient:
         self.relay = MediaRelay()
 
         self.data_channel_callback = data_channel_callback
+        self.data_channel_open_callback = data_channel_open_callback
+        self.data_channel_close_callback = data_channel_close_callback
 
         self._running = False
         self._init_client()
@@ -216,6 +220,8 @@ class KinesisVideoClient:
             if pc.connectionState in ["failed", "closed"]:
                 self.PCMap.pop(client_id, None)
                 self.DCMap.pop(client_id, None)
+                if self.data_channel_close_callback:
+                    self.data_channel_close_callback()
 
         @pc.on("track")
         def on_track(track):
@@ -228,9 +234,20 @@ class KinesisVideoClient:
             )
             self.DCMap[client_id] = channel
 
+            if self.data_channel_open_callback:
+                self.data_channel_open_callback()
+
             @channel.on("message")
             def on_message(message):
                 self.data_channel_callback(message)
+
+            @channel.on("close")
+            def on_close():
+                loguru.logger.info(
+                    f"[{client_id}] Data channel closed: {channel.label}"
+                )
+                if self.data_channel_close_callback:
+                    self.data_channel_close_callback()
 
         await pc.setRemoteDescription(
             RTCSessionDescription(sdp=payload["sdp"], type=payload["type"])
