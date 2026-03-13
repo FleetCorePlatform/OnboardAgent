@@ -1,5 +1,6 @@
 import asyncio
 from asyncio import Task
+from math import sqrt
 from typing import Callable, Optional
 from cbor2 import loads, dumps
 from loguru import logger
@@ -22,7 +23,16 @@ from src.models.manual_control import (
     CommandAckPacket,
     CommandAckPayload,
     CommandReqPacket,
+    TelemetryPacket,
 )
+from src.models.telemetry_data import (
+    LiveTelemetryData,
+    Position,
+    Battery,
+    Health,
+    Velocity,
+)
+from src.utils.lte_util import get_signal_strength
 
 
 class ManualController:
@@ -31,16 +41,17 @@ class ManualController:
         drone: MavsdkController,
         try_take_control_cb: Callable[[], bool],
         release_control_cb: Callable[[], None],
-        send_data_msg: Callable[[str], None],
+        send_data_msg: Callable[[bytes], None],
     ):
         self._drone = drone
         self._try_take_control = try_take_control_cb
         self._release_control = release_control_cb
         self._active = False
+        self._telemetry_active = False
         self._control_sequence_id = 0
         self._send_data_msg = send_data_msg
 
-        self._telemetry_streamer_task = Optional[Task] | None
+        self._telemetry_streamer_task: asyncio.Task | None = None
 
     async def handle_packet(self, packet_bytes: bytes) -> bytes | None:
         try:
@@ -63,15 +74,57 @@ class ManualController:
         return None
 
     async def send_telemetry(self):
-        data = await self._drone.get_telemetry()
-        # packet = TelemetryPacket(...) // TODO: Implement telemetry packet sending
+        (
+            position_raw,
+            battery_raw,
+            health_raw,
+            velocity_raw,
+            heading_raw,
+            signal_strength_raw,
+            uptime,
+        ) = await self._drone.gather_telemetry()
+        ground_speed: float = sqrt(velocity_raw.east_m_s**2 + velocity_raw.north_m_s**2)
+
+        packet: TelemetryPacket = TelemetryPacket(
+            type=PacketType.TELEMETRY,
+            payload=LiveTelemetryData(
+                uptime_s=uptime,
+                signal_strength_dbm=signal_strength_raw,
+                position=Position(**position_raw.__dict__),
+                battery=Battery(**battery_raw.__dict__),
+                health=Health(**health_raw.__dict__),
+                velocity=Velocity(
+                    ground_speed_ms=ground_speed, heading_deg=heading_raw.heading_deg
+                ),
+            ),
+        )
         self._send_data_msg(dumps(packet.model_dump(mode="json")))
 
     async def start_telemetry_streaming(self):
-        while self._active:
-            asyncio.create_task(self.send_telemetry())
+        while self._telemetry_active:
+            try:
+                await self.send_telemetry()
+            except Exception as e:
+                logger.error(f"Error sending telemetry: {e}")
             await asyncio.sleep(0.5)
 
+    def on_datachannel_open(self):
+        logger.info("WebRTC DataChannel opened, starting telemetry stream")
+        self._telemetry_active = True
+        if (
+            self._telemetry_streamer_task is None
+            or self._telemetry_streamer_task.done()
+        ):
+            self._telemetry_streamer_task = asyncio.create_task(
+                self.start_telemetry_streaming()
+            )
+
+    def on_datachannel_close(self):
+        logger.info("WebRTC DataChannel closed, stopping telemetry stream")
+        self._control_sequence_id = 0
+        self._telemetry_active = False
+        if self._telemetry_streamer_task and not self._telemetry_streamer_task.done():
+            self._telemetry_streamer_task.cancel()
 
     def parse_packet(self, packet: bytes):
         data = loads(packet)
@@ -107,6 +160,7 @@ class ManualController:
                 )
 
             self._active = False
+            self._control_sequence_id = 0
             self._release_control()
             return HandshakeAckPacket(
                 type=PacketType.HANDSHAKE_ACK,
@@ -158,17 +212,28 @@ class ManualController:
                 )
 
             self._active = True
-            self._telemetry_streamer_task = asyncio.create_task(self.start_telemetry_streaming())
+            self._control_sequence_id = 0
             return HandshakeAckPacket(
                 type=PacketType.HANDSHAKE_ACK,
                 payload=AckPacketPayload(status=ManualControlAckStatus.ACCEPTED),
             )
 
+        else:
+            return HandshakeAckPacket(
+                type=PacketType.HANDSHAKE_ACK,
+                payload=AckPacketPayload(
+                    status=ManualControlAckStatus.DENIED,
+                    reason="Malformed packet: ControlStatus required",
+                ),
+            )
+
     async def _handle_control_packet(self, packet: ControlPacket):
         if not self._active:
+            logger.debug(f"Received control packe, while inactive: {packet}")
             return
 
         if packet.sequence_id <= self._control_sequence_id:
+            logger.debug(f"Received incorrect sequence_id: {packet.sequence_id}")
             return
 
         self._control_sequence_id = packet.sequence_id

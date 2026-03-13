@@ -8,6 +8,7 @@ from src.enums.manual_control_enums import (
     PacketType,
     ControlActions,
 )
+from src.models.telemetry_data import LiveTelemetryData
 
 
 class BasePacketModel(BaseModel):
@@ -68,3 +69,8 @@ class CommandReqPacket(BasePacketModel):
 class CommandAckPacket(BasePacketModel):
     type: PacketType
     payload: CommandAckPayload
+
+
+class TelemetryPacket(BasePacketModel):
+    type: PacketType
+    payload: LiveTelemetryData

@@ -34,3 +34,13 @@ class TelemetryData(BaseModel):
     battery: Battery
     health: Health
     velocity: Velocity
+
+
+# Sent on the webrtc datachannel
+class LiveTelemetryData(BaseModel):
+    uptime_s: int
+    signal_strength_dbm: float
+    position: Position
+    battery: Battery
+    health: Health
+    velocity: Velocity

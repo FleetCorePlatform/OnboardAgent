@@ -7,6 +7,7 @@ class PacketType(Enum):
     CONTROL = "CONTROL"
     CMD_REQ = "CMD_REQ"
     CMD_ACK = "CMD_ACK"
+    TELEMETRY = "TELEMETRY"
 
 
 class ControlStatus(Enum):
